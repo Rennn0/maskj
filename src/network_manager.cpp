@@ -11,8 +11,7 @@
 
 namespace
 {
-
-    constexpr const char *RESPONSES_DIR = "responses";
+    constexpr const char *RESPONSES_DIR = "responses.dev";
 
     std::string sanitize_for_filename(const char *url)
     {
@@ -96,7 +95,8 @@ void NetworkManager::get(const char *url) const
 
     std::error_code ec;
     std::filesystem::create_directories(RESPONSES_DIR, ec);
-    if (ec) {
+    if (ec)
+    {
         print_error("failed to create responses directory");
         curl_easy_cleanup(curl);
         return;

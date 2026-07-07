@@ -27,8 +27,6 @@ if(NOT CURL_FOUND)
     FetchContent_MakeAvailable(curl)
 endif()
 
-
-
 add_executable(maskj
     src/main.cpp
     src/network_manager.cpp
