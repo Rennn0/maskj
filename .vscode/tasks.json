@@ -1,0 +1,16 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "type": "cmake",
+      "label": "cmake-build",
+      "command": "build",
+      "targets": ["maskj"],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "detail": "Build the maskj target with the active CMake preset"
+    }
+  ]
+}

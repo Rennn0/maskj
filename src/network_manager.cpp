@@ -1,4 +1,4 @@
-#include "network_manager.hpp"
+#include <mj_net/network_manager.hpp>
 #include <chrono>
 #include <cctype>
 #include <curl/curl.h>
@@ -49,14 +49,27 @@ namespace
 
     size_t write_callback(char *data, size_t size, size_t nmemb, void *userp)
     {
-        auto *response = static_cast<std::string *>(userp);
+        std::string *response = static_cast<std::string *>(userp);
         response->append(data, size * nmemb);
         return size * nmemb;
     }
 
+    void apply_method(CURL *curl, mjNet::request_method method)
+    {
+        switch (method)
+        {
+        case mjNet::request_method::get:
+            curl_easy_setopt(curl, CURLOPT_HTTPGET, 1L);
+            break;
+        case mjNet::request_method::post:
+            curl_easy_setopt(curl, CURLOPT_POST, 1L);
+            break;
+        }
+    }
+
 }
 
-NetworkManager::NetworkManager()
+mjNet::NetworkManager::NetworkManager()
 {
     print_info("network manager ctr");
     CURLcode initCode = curl_global_init(CURL_GLOBAL_DEFAULT);
@@ -66,23 +79,29 @@ NetworkManager::NetworkManager()
     print_info(msg.c_str());
 }
 
-NetworkManager::~NetworkManager()
+mjNet::NetworkManager::~NetworkManager()
 {
     print_info("network manager dectr");
     curl_global_cleanup();
 }
 
-void NetworkManager::get(const char *url) const
+mjNet::response_status mjNet::NetworkManager::get(const char *url) const
+{
+    return fetch_core(request_method::get, url);
+}
+
+mjNet::response_status mjNet::NetworkManager::fetch_core(request_method method, const char *url) const
 {
     CURL *curl = curl_easy_init();
     if (!curl)
     {
-        print_info("curl_easy_init failed");
-        return;
+        print_error("curl_easy_init failed");
+        return response_status::Failed;
     }
 
     std::string response;
     curl_easy_setopt(curl, CURLOPT_URL, url);
+    apply_method(curl, method);
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_callback);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
 
@@ -91,7 +110,7 @@ void NetworkManager::get(const char *url) const
     {
         print_error(curl_easy_strerror(res));
         curl_easy_cleanup(curl);
-        return;
+        return response_status::Failed;
     }
 
     const std::string filename = sanitize_for_filename(url) + timestamp_string() + ".txt";
@@ -103,7 +122,7 @@ void NetworkManager::get(const char *url) const
     {
         print_error("failed to create responses directory");
         curl_easy_cleanup(curl);
-        return;
+        return response_status::Failed;
     }
 
     std::ofstream out(filepath, std::ios::binary);
@@ -111,30 +130,31 @@ void NetworkManager::get(const char *url) const
     {
         print_error("failed to open output file");
         curl_easy_cleanup(curl);
-        return;
+        return response_status::Failed;
     }
 
     out.write(response.data(), static_cast<std::streamsize>(response.size()));
     if (!out)
     {
         print_error("failed to write output file");
+        curl_easy_cleanup(curl);
+        return response_status::Failed;
     }
-    else
-    {
-        std::string msg = "saved response to ";
-        msg += filepath.string();
-        print_info(msg.c_str());
-    }
+
+    std::string msg = "saved response to ";
+    msg += filepath.string();
+    print_info(msg.c_str());
 
     curl_easy_cleanup(curl);
+    return response_status::Ok;
 }
 
-void NetworkManager::print_info(const char *str) const
+void mjNet::NetworkManager::print_info(const char *str) const
 {
     std::cout << "[info] " << str << std::endl;
 }
 
-void NetworkManager::print_error(const char *str) const
+void mjNet::NetworkManager::print_error(const char *str) const
 {
     std::cout << "[error] " << str << std::endl;
 }

@@ -1,5 +1,6 @@
 {
   "cmake.useCMakePresets": "always",
+  "cmake.configureOnOpen": true,
   "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools",
   "files.associations": {
     "*.h": "cpp",
