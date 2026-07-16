@@ -15,7 +15,7 @@
     {
       "name": "windows",
       "displayName": "Windows (Visual Studio 2022, x64)",
-      "description": "Generates maskj.sln. Auto-installs libcurl via vcpkg if missing.",
+      "description": "Generates arvis.sln. Auto-installs libcurl via vcpkg if missing.",
       "inherits": "base",
       "generator": "Visual Studio 17 2022",
       "architecture": "x64",

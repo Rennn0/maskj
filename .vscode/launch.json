@@ -2,7 +2,7 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Debug maskj (Windows)",
+      "name": "Debug arvis (Windows)",
       "type": "cppvsdbg",
       "request": "launch",
       "program": "${command:cmake.launchTargetPath}",
@@ -12,7 +12,7 @@
       "preLaunchTask": "cmake-build"
     },
     {
-      "name": "Debug maskj (Linux/gdb)",
+      "name": "Debug arvis (Linux/gdb)",
       "type": "cppdbg",
       "request": "launch",
       "program": "${command:cmake.launchTargetPath}",

@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.24)
-project(maskj
-    VERSION 1.0.0 
+project(arvis
+    VERSION 1.0.0
     LANGUAGES CXX
 )
 
@@ -9,26 +9,84 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 # Use a prebuilt libcurl (install via vcpkg or system package manager).
-# This keeps the generated solution clean — only the maskj project appears,
+# This keeps the generated solution clean — only the arvis project appears,
 # with no third-party curl subprojects.
 find_package(CURL REQUIRED)
 
-add_executable(maskj
+# OpenGL is the cross-platform rendering backend for the GUI (provided by the OS).
+find_package(OpenGL REQUIRED)
+
+# ---------------------------------------------------------------------------
+# GUI dependencies — cross-platform (Windows / Linux / macOS).
+#
+# Both GLFW (windowing/input) and Dear ImGui (immediate-mode UI) are fetched
+# and built by CMake at configure time, each pinned to a release tag. There is
+# no manual install step and no system package to hunt for; the only OS-level
+# requirement is an OpenGL driver (always present) plus, on Linux, the usual
+# X11/Wayland development headers that GLFW itself depends on.
+# ---------------------------------------------------------------------------
+include(FetchContent)
+
+# --- GLFW --------------------------------------------------------------------
+FetchContent_Declare(
+    glfw
+    GIT_REPOSITORY https://github.com/glfw/glfw.git
+    GIT_TAG        3.4          # pinned for reproducible builds
+    GIT_SHALLOW    TRUE
+)
+# Build only the library — skip GLFW's own examples/tests/docs.
+set(GLFW_BUILD_DOCS     OFF CACHE BOOL "" FORCE)
+set(GLFW_BUILD_TESTS    OFF CACHE BOOL "" FORCE)
+set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(GLFW_INSTALL        OFF CACHE BOOL "" FORCE)
+FetchContent_MakeAvailable(glfw)
+
+# --- Dear ImGui --------------------------------------------------------------
+# ImGui ships no build system of its own, so we compile its core plus the
+# GLFW + OpenGL3 backends into a small static library ourselves.
+FetchContent_Declare(
+    imgui
+    GIT_REPOSITORY https://github.com/ocornut/imgui.git
+    GIT_TAG        v1.91.5      # pinned for reproducible builds
+    GIT_SHALLOW    TRUE
+)
+FetchContent_MakeAvailable(imgui)
+
+add_library(imgui STATIC
+    ${imgui_SOURCE_DIR}/imgui.cpp
+    ${imgui_SOURCE_DIR}/imgui_draw.cpp
+    ${imgui_SOURCE_DIR}/imgui_tables.cpp
+    ${imgui_SOURCE_DIR}/imgui_widgets.cpp
+    ${imgui_SOURCE_DIR}/backends/imgui_impl_glfw.cpp
+    ${imgui_SOURCE_DIR}/backends/imgui_impl_opengl3.cpp
+)
+target_include_directories(imgui PUBLIC
+    ${imgui_SOURCE_DIR}
+    ${imgui_SOURCE_DIR}/backends
+)
+# The OpenGL3 backend ships its own GL loader, so ImGui only needs GLFW + GL.
+target_link_libraries(imgui PUBLIC glfw OpenGL::GL)
+
+add_executable(arvis
     src/main.cpp
+    src/network_manager_ui.cpp
     src/network_manager.cpp
+    src/root.cpp
 )
 
-target_include_directories(maskj PRIVATE
+target_include_directories(arvis PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
 
-target_link_libraries(maskj PRIVATE CURL::libcurl)
+target_link_libraries(arvis PRIVATE CURL::libcurl imgui)
 
-# Make Visual Studio open 'maskj' as the startup project instead of ALL_BUILD
-set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT maskj)
+# Make Visual Studio open 'arvis' as the startup project instead of ALL_BUILD
+set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT arvis)
 
 if(MSVC)
-    target_compile_options(maskj PRIVATE /W4)
+    target_compile_options(arvis PRIVATE /W4)
+    # ImGui is third-party; don't hold it to our warning level.
+    target_compile_options(imgui PRIVATE /W1)
 else()
-    target_compile_options(maskj PRIVATE -Wall -Wextra -Wpedantic)
+    target_compile_options(arvis PRIVATE -Wall -Wextra -Wpedantic)
 endif()

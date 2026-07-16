@@ -1,13 +1,4 @@
-#include <mj_net/network_manager.hpp>
-#include <chrono>
-#include <cctype>
-#include <curl/curl.h>
-#include <filesystem>
-#include <fstream>
-#include <iomanip>
-#include <iostream>
-#include <sstream>
-#include <string>
+#include <av_net/network_manager.hpp>
 
 namespace
 {
@@ -54,22 +45,27 @@ namespace
         return size * nmemb;
     }
 
-    void apply_method(CURL *curl, mjNet::request_method method)
+    void apply_method(CURL *curl, avNet::request_method method)
     {
         switch (method)
         {
-        case mjNet::request_method::get:
+        case avNet::request_method::get:
             curl_easy_setopt(curl, CURLOPT_HTTPGET, 1L);
             break;
-        case mjNet::request_method::post:
+        case avNet::request_method::post:
             curl_easy_setopt(curl, CURLOPT_POST, 1L);
+            // Send an explicit (empty) body. Without this, CURLOPT_POST makes
+            // libcurl read the request body from its default source (stdin),
+            // which blocks forever in a GUI app that has no console input.
+            curl_easy_setopt(curl, CURLOPT_POSTFIELDS, "");
+            curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, 0L);
             break;
         }
     }
 
 }
 
-mjNet::NetworkManager::NetworkManager()
+avNet::NetworkManager::NetworkManager()
 {
     print_info("network manager ctr");
     CURLcode initCode = curl_global_init(CURL_GLOBAL_DEFAULT);
@@ -79,24 +75,31 @@ mjNet::NetworkManager::NetworkManager()
     print_info(msg.c_str());
 }
 
-mjNet::NetworkManager::~NetworkManager()
+avNet::NetworkManager::~NetworkManager()
 {
     print_info("network manager dectr");
     curl_global_cleanup();
 }
 
-mjNet::response_status mjNet::NetworkManager::get(const char *url) const
+avNet::http_result avNet::NetworkManager::get(const char *url) const
 {
     return fetch_core(request_method::get, url);
 }
 
-mjNet::response_status mjNet::NetworkManager::fetch_core(request_method method, const char *url) const
+avNet::http_result avNet::NetworkManager::post(const char *url) const
 {
+    return fetch_core(request_method::post, url);
+}
+
+avNet::http_result avNet::NetworkManager::fetch_core(request_method method, const char *url) const
+{
+    http_result result;
+
     CURL *curl = curl_easy_init();
     if (!curl)
     {
         print_error("curl_easy_init failed");
-        return response_status::Failed;
+        return result;
     }
 
     std::string response;
@@ -105,13 +108,24 @@ mjNet::response_status mjNet::NetworkManager::fetch_core(request_method method, 
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_callback);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
 
+    // Never let a request hang the worker thread indefinitely.
+    // NOSIGNAL is required for timeouts to work safely off the main thread.
+    curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
+    curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 15L);
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 30L);
+    curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+
     CURLcode res = curl_easy_perform(curl);
     if (res != CURLE_OK)
     {
         print_error(curl_easy_strerror(res));
+        result.body = curl_easy_strerror(res);
         curl_easy_cleanup(curl);
-        return response_status::Failed;
+        return result;
     }
+
+    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &result.http_code);
+    result.body = response;
 
     const std::string filename = sanitize_for_filename(url) + timestamp_string() + ".txt";
     const std::filesystem::path filepath = std::filesystem::path(RESPONSES_DIR) / filename;
@@ -122,7 +136,7 @@ mjNet::response_status mjNet::NetworkManager::fetch_core(request_method method, 
     {
         print_error("failed to create responses directory");
         curl_easy_cleanup(curl);
-        return response_status::Failed;
+        return result;
     }
 
     std::ofstream out(filepath, std::ios::binary);
@@ -130,7 +144,7 @@ mjNet::response_status mjNet::NetworkManager::fetch_core(request_method method, 
     {
         print_error("failed to open output file");
         curl_easy_cleanup(curl);
-        return response_status::Failed;
+        return result;
     }
 
     out.write(response.data(), static_cast<std::streamsize>(response.size()));
@@ -138,23 +152,26 @@ mjNet::response_status mjNet::NetworkManager::fetch_core(request_method method, 
     {
         print_error("failed to write output file");
         curl_easy_cleanup(curl);
-        return response_status::Failed;
+        return result;
     }
 
     std::string msg = "saved response to ";
     msg += filepath.string();
     print_info(msg.c_str());
 
+    result.saved_path = filepath.string();
+    result.status = response_status::Ok;
+
     curl_easy_cleanup(curl);
-    return response_status::Ok;
+    return result;
 }
 
-void mjNet::NetworkManager::print_info(const char *str) const
+void avNet::NetworkManager::print_info(const char *str) const
 {
     std::cout << "[info] " << str << std::endl;
 }
 
-void mjNet::NetworkManager::print_error(const char *str) const
+void avNet::NetworkManager::print_error(const char *str) const
 {
     std::cout << "[error] " << str << std::endl;
 }

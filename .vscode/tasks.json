@@ -5,12 +5,12 @@
       "type": "cmake",
       "label": "cmake-build",
       "command": "build",
-      "targets": ["maskj"],
+      "targets": ["arvis"],
       "group": {
         "kind": "build",
         "isDefault": true
       },
-      "detail": "Build the maskj target with the active CMake preset"
+      "detail": "Build the arvis target with the active CMake preset"
     }
   ]
 }
