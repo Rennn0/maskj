@@ -164,7 +164,7 @@ namespace avUi
                 }
 
                 ImGui::Separator();
-                if (ImGui::MenuItem("exit"))
+                if (ImGui::MenuItem("exit Esc"))
                 {
                     this->avRoot.log_info("close clicked");
                     glfwSetWindowShouldClose(this->window, true);
