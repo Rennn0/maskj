@@ -96,7 +96,7 @@ namespace avUi
         std::shared_ptr<avR::UiComponent> root = std::make_shared<avR::AvDiv>("root", avR::AvDiv::Config{});
         this->setup_root(root);
 
-        const double fps = 1. / 6.;
+        const double fps = 1. / 60.;
         double lastFrame = 0.;
         while (!glfwWindowShouldClose(this->window))
         {
