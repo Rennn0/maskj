@@ -57,7 +57,7 @@ namespace avNet
         http_result post(const char *url) const;
 
     private:
-        avR::AvRoot m_root;        
+        avR::AvRoot root;
 
         /// @brief sends a request with the given method, writes the response
         ///        body into the responses folder, and returns the full result

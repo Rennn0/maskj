@@ -3,17 +3,14 @@
 namespace avR
 {
     AvCustom::AvCustom(std::string id, DrawFn drawFn)
-        : UiComponent(std::move(id)), m_drawFn(std::move(drawFn))
+        : UiComponent(std::move(id)), drawFn(std::move(drawFn))
     {
     }
 
-    void AvCustom::draw()
+    void AvCustom::render()
     {
-        if (!m_drawFn)
-            return;
-
-        ImGui::PushID(this);
-        m_drawFn();
-        ImGui::PopID();
+        // ID scope is opened by UiComponent::draw(); just run the callback.
+        if (this->drawFn)
+            this->drawFn();
     }
 } // namespace avR

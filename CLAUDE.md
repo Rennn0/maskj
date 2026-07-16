@@ -64,14 +64,21 @@ arvis/
 │   ├── av_ui/network_manager_ui.hpp
 │   └── av_root/
 │       ├── root.hpp              # AvRoot logging base
-│       └── ui_component.hpp      # UiComponent base (UI foundation, in progress)
+│       ├── im_scope.hpp          # RAII ImGui guards: ScopedId / ScopedStyle (header-only)
+│       ├── ui_component.hpp      # UiComponent base (UI foundation, in progress)
+│       ├── av_div.hpp            # AvDiv container (layout / splitters)
+│       ├── av_button.hpp         # AvButton leaf
+│       └── av_custom.hpp         # AvCustom callback leaf
 │
 ├── src/                          # implementations
 │   ├── main.cpp                  # entry point -> constructs avUi::NetworkManagerUi, calls run()
 │   ├── network_manager.cpp       # libcurl wrapper
 │   ├── network_manager_ui.cpp    # GLFW + ImGui window + event loop
 │   ├── root.cpp                  # AvRoot logging impl
-│   └── ui_component.cpp          # UiComponent impl (in progress)
+│   ├── ui_component.cpp          # UiComponent impl (in progress)
+│   ├── av_div.cpp                # AvDiv impl
+│   ├── av_button.cpp             # AvButton impl
+│   └── av_custom.cpp             # AvCustom impl
 │
 ├── scripts/                      # dev tooling
 │   ├── new_class.ps1             # class scaffolder (Windows / PowerShell)
@@ -146,9 +153,14 @@ link errors (also bitten by this):
     stdin and hangs forever in a GUI app.
 
 - **`avUi::NetworkManagerUi`** (`network_manager_ui.hpp/.cpp`)
-  - `int run() const` — creates the GLFW window + OpenGL context, initializes ImGui,
-    and runs the render/event loop until the window closes.
-  - Holds an `avR::AvRoot m_root` logger (constructed in the initializer list).
+  - `void run()` — creates the GLFW window + OpenGL context, initializes ImGui, builds
+    the retained `UiComponent` tree once, and runs the render/event loop until the
+    window closes. `main` constructs it on the stack and calls `run()`.
+  - **Deliberately NOT a `UiComponent`.** It is the host/driver of the component tree,
+    not a node within it — making it a `UiComponent` would break the invariant that
+    `draw()` renders one frame inside a parent's ID scope (see below).
+  - Holds an `avR::AvRoot avRoot` logger by composition (constructed in the initializer
+    list).
   - Requests are dispatched on a worker thread via `std::async`; the loop polls the
     `std::future` each frame and shows results when ready. An in-flight request is
     awaited before shutdown so the worker never outlives the `NetworkManager`.
@@ -157,26 +169,45 @@ link errors (also bitten by this):
     captureless lambda.
 
 - **`avR::AvRoot`** (`root.hpp/.cpp`)
-  - Lightweight logging base. Ctor takes a name; `log_info` / `log_error` print
+  - Lightweight logger. Ctor takes a name; `log_info` / `log_error` print
     `[level](name)<msg>` (info→`std::cout`, error→`std::cerr`) via a private
-    `log_core`. Intended to be used by **composition** (`AvRoot m_root{"Name"};`),
-    not inheritance.
+    `log_core`. **Always used by composition** (`AvRoot root{"Name"};`), never
+    inheritance — both `UiComponent` and `NetworkManagerUi` hold one as a member.
+
+- **`avR::ScopedId` / `avR::ScopedStyle`** (`im_scope.hpp`, header-only)
+  - RAII guards over ImGui's push/pop stacks. `ScopedId` wraps `PushID`/`PopID`;
+    `ScopedStyle` has chainable `.color(idx, v)` / `.var(idx, v)` calls and pops
+    exactly what it pushed in its destructor. **Use these instead of hand-counting
+    `PopStyleColor(n)` / `PopStyleVar(n)`** — that manual counting was the source of
+    unbalanced-stack and ID-collision bugs. Colors and vars are independent stacks,
+    so interleaving them on one guard is fine.
 
 - **`avR::UiComponent`** (`ui_component.hpp/.cpp`) — **in progress.**
-  - Base of a retained UI-component tree rendered onto immediate-mode ImGui.
-    Interface: `Draw()` (pure virtual), `AddChild`, optional `OnClick`. Concrete
-    components planned: `Button`, `Input`, `Select`, `GridLayout`, lists.
+  - Base of a retained UI-component tree rendered onto immediate-mode ImGui. Uses the
+    **template-method pattern**: `draw()` is **non-virtual** — it opens a `ScopedId(this)`
+    scope and dispatches to a protected pure-virtual `render()`. Subclasses implement
+    `render()`, never `draw()`, so the "every node draws inside its own ID scope"
+    invariant holds for the whole tree automatically.
+  - Interface: `draw()` (non-virtual entry), `render()` (protected pure virtual),
+    `add_child`, optional `set_on_click`, `set_layout_size` / `preferred_size` (layout
+    negotiation). Concrete components today: `AvDiv`, `AvButton`, `AvCustom`; planned:
+    `Input`, `Select`, `GridLayout`, lists.
+  - Holds its `AvRoot` logger by composition; subclasses log via the protected
+    `log_info` / `log_error` forwarders (the logger member is declared before `id` so
+    the ctor can copy the id into the logger name before moving it into `id`).
+  - **Adding a new component:** subclass `UiComponent`, implement `render()`, declare
+    any style pushes on a local `ScopedStyle`. That's the whole contract.
   - **Full design rationale lives in `ui_foundation.md`** — read it before extending
     the UI. Key points: Composite pattern, `unique_ptr` child ownership, **virtual
-    destructor is mandatory**, build the tree once (not per frame), `PushID(this)` to
-    avoid ImGui ID collisions, data binding via pointers/callbacks, and the goal of
-    reducing the event loop to `root->Draw();`.
+    destructor is mandatory**, build the tree once (not per frame), ID scoping handled
+    by the base `draw()`, data binding via pointers/callbacks, and the goal of reducing
+    the event loop to `root->draw();`.
 
 ### The immediate-mode model (important mental model)
 
 ImGui is immediate-mode: widgets aren't objects; you re-issue draw calls every frame
 and a widget "returns true" on the frame it's interacted with. The `UiComponent` tree
-is the **retained** layer that holds state/config; each frame `Draw()` translates it
+is the **retained** layer that holds state/config; each frame `draw()` translates it
 into ImGui calls and fires callbacks inline. Do not rebuild the tree every frame.
 
 ---
@@ -191,6 +222,13 @@ into ImGui calls and fires callbacks inline. Do not rebuild the tree every frame
 - **Includes:** angle-bracket module paths, e.g. `#include <av_net/network_manager.hpp>`
   (works because `include/` is on the target's include path).
 - **`#pragma once`** in every header.
+- **Member variables:** no `m_` prefix — name the member plainly (`config`, `label`,
+  `root`) and **always refer to it through `this->`** inside methods (`this->config`),
+  which also disambiguates it from same-named ctor params (`config(config)` in the
+  init list works, `this->config = config;` in the body works). Corollary: a data
+  member and a member function can't share a name, so don't pair a `foo` member with a
+  `foo()` accessor — use a distinct verb (`get_children()`, `configure()`) or drop the
+  accessor.
 - **Constructors:** initialize members in the **initializer list**, not by assignment
   in the body. Never assign `nullptr` to a `std::string`.
 - **Polymorphic bases:** always `virtual ~T() = default;`.
@@ -254,7 +292,9 @@ macOS ships bash 3.2, so `brew install bash` there).
    are set in `fetch_core`; keep them.
 6. **Rebuild fails with `LNK1168`** on Windows → the app is still running; kill it.
 7. **ImGui ID collisions** (duplicate labels / list rows) → wrong widget gets the
-   click. Use `ImGui::PushID(this)` / `PushID(index)`.
+   click. Inside the `UiComponent` tree this is handled for you (base `draw()` opens a
+   `ScopedId(this)`); for ad-hoc rows use `avR::ScopedId(index)` (or raw `PushID`).
+   Prefer `avR::ScopedStyle` over manual `PushStyleColor`/`Var` + hand-counted pops.
 8. **Searching the whole tree** picks up `external/vcpkg` noise → always exclude
    `external/**`.
 

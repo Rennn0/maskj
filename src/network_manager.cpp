@@ -65,19 +65,19 @@ namespace
 
 }
 
-avNet::NetworkManager::NetworkManager() : m_root("NetworkManager")
+avNet::NetworkManager::NetworkManager() : root("NetworkManager")
 {
-    m_root.log_info("network manager ctr");
+    this->root.log_info("network manager ctr");
     CURLcode initCode = curl_global_init(CURL_GLOBAL_DEFAULT);
 
     std::string msg = "curl_global_init status: ";
     msg += curl_easy_strerror(initCode);
-    m_root.log_info(msg.c_str());
+    this->root.log_info(msg.c_str());
 }
 
 avNet::NetworkManager::~NetworkManager()
 {
-    m_root.log_info("network manager dectr");
+    this->root.log_info("network manager dectr");
     curl_global_cleanup();
 }
 
@@ -98,7 +98,7 @@ avNet::http_result avNet::NetworkManager::fetch_core(request_method method, cons
     CURL *curl = curl_easy_init();
     if (!curl)
     {
-        m_root.log_error("curl_easy_init failed");
+        this->root.log_error("curl_easy_init failed");
         return result;
     }
 
@@ -118,7 +118,7 @@ avNet::http_result avNet::NetworkManager::fetch_core(request_method method, cons
     CURLcode res = curl_easy_perform(curl);
     if (res != CURLE_OK)
     {
-        m_root.log_error(curl_easy_strerror(res));
+        this->root.log_error(curl_easy_strerror(res));
         result.body = curl_easy_strerror(res);
         curl_easy_cleanup(curl);
         return result;
@@ -134,7 +134,7 @@ avNet::http_result avNet::NetworkManager::fetch_core(request_method method, cons
     std::filesystem::create_directories(RESPONSES_DIR, ec);
     if (ec)
     {
-        m_root.log_error("failed to create responses directory");
+        this->root.log_error("failed to create responses directory");
         curl_easy_cleanup(curl);
         return result;
     }
@@ -142,7 +142,7 @@ avNet::http_result avNet::NetworkManager::fetch_core(request_method method, cons
     std::ofstream out(filepath, std::ios::binary);
     if (!out)
     {
-        m_root.log_error("failed to open output file");
+        this->root.log_error("failed to open output file");
         curl_easy_cleanup(curl);
         return result;
     }
@@ -150,14 +150,14 @@ avNet::http_result avNet::NetworkManager::fetch_core(request_method method, cons
     out.write(response.data(), static_cast<std::streamsize>(response.size()));
     if (!out)
     {
-        m_root.log_error("failed to write output file");
+        this->root.log_error("failed to write output file");
         curl_easy_cleanup(curl);
         return result;
     }
 
     std::string msg = "saved response to ";
     msg += filepath.string();
-    m_root.log_info(msg.c_str());
+    this->root.log_info(msg.c_str());
 
     result.saved_path = filepath.string();
     result.status = response_status::Ok;

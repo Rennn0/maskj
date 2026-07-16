@@ -11,7 +11,11 @@
 
 namespace avUi
 {
-    class NetworkManagerUi : public avR::UiComponent
+    /// @brief Application host: owns the GLFW window + ImGui context and runs the
+    ///        event/render loop. It builds a retained avR::UiComponent tree and
+    ///        draws it each frame, but is deliberately NOT a UiComponent itself —
+    ///        it is the root driver of the tree, not a node within it.
+    class NetworkManagerUi
     {
     public:
         NetworkManagerUi();
@@ -19,8 +23,7 @@ namespace avUi
 
         /// @brief Opens the arvis GUI window and runs the event/render loop until
         ///        the user closes the window.
-        /// @return process exit code (0 on clean exit, non-zero on init failure).
-        void draw() override;
+        void run();
 
     private:
         int width;
@@ -32,8 +35,10 @@ namespace avUi
         std::vector<AvRequest> requests; ///< user-created requests (sidebar list)
         int selectedRequest = -1;        ///< index into requests, -1 = none
         int nextRequestId = 1;           ///< sequential id for display names
+        float fontScale = 1.5f;          ///< ImGui FontGlobalScale (app-wide text size)
 
         void check_keyboard_events();
+        void setup_menu();
         void setup_root(std::shared_ptr<avR::UiComponent> &root);
     };
 }

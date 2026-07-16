@@ -35,10 +35,11 @@ namespace avUi
         return "Unknown";
     }
 
-    NetworkManagerUi::NetworkManagerUi() : avRoot("NetworkManagerUI"),
+    NetworkManagerUi::NetworkManagerUi() : width(0),
+                                           height(0),
+                                           avRoot("NetworkManagerUI"),
                                            window(nullptr),
-                                           width(0),
-                                           height(0)
+                                           monitor(nullptr)
     {
         if (!glfwInit())
         {
@@ -56,10 +57,10 @@ namespace avUi
         glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
         glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
         glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-        // glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
-        // glfwWindowHint(GLFW_DECORATED, GLFW_TRUE);
+        glfwWindowHint(GLFW_DECORATED, GLFW_TRUE);
+        glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
         glfwWindowHint(GLFW_MAXIMIZED, GLFW_TRUE);
-        glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
+        glfwWindowHint(GLFW_VISIBLE, GLFW_TRUE);
         this->width = mode->width;
         this->height = mode->height;
     }
@@ -72,10 +73,18 @@ namespace avUi
         this->monitor = nullptr;
     }
 
-    void NetworkManagerUi::draw()
+    void NetworkManagerUi::run()
     {
-        this->window = glfwCreateWindow(this->width, this->height, "Arvis", this->monitor, nullptr);
+        this->window = glfwCreateWindow(this->width, this->height, "Arvis", nullptr, nullptr);
+        if (!this->window)
+        {
+            const char *desc;
+            glfwGetError(&desc);
+            this->avRoot.log_error(desc ? desc : "glfwCreateWindow failed");
+            throw std::runtime_error("glfw create window failed");
+        }
         glfwMakeContextCurrent(this->window);
+        glfwMaximizeWindow(this->window);
         glfwSwapInterval(1);
 
         IMGUI_CHECKVERSION();
@@ -84,12 +93,21 @@ namespace avUi
         ImGui_ImplGlfw_InitForOpenGL(this->window, true);
         ImGui_ImplOpenGL3_Init("#version 130");
 
-        std::shared_ptr<avR::UiComponent> root = std::make_shared<avR::AvDiv>("root");
+        std::shared_ptr<avR::UiComponent> root = std::make_shared<avR::AvDiv>("root", avR::AvDiv::Config{});
         this->setup_root(root);
 
+        const double fps = 1. / 6.;
+        double lastFrame = 0.;
         while (!glfwWindowShouldClose(this->window))
         {
-            glfwPollEvents();
+            glfwWaitEventsTimeout(fps);
+
+            double now = glfwGetTime();
+            double delta = now - lastFrame;
+            if (delta < fps)
+                continue;
+            lastFrame = now;
+
             this->check_keyboard_events();
             ImGui_ImplOpenGL3_NewFrame();
             ImGui_ImplGlfw_NewFrame();
@@ -100,10 +118,12 @@ namespace avUi
             ImGui::SetNextWindowSize(viewPort->WorkSize);
             const ImGuiWindowFlags hostFlag = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
                                               ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse |
-                                              ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoNavFocus;
+                                              ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoNavFocus |
+                                              ImGuiWindowFlags_MenuBar;
             ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
             ImGui::Begin("##host", nullptr, hostFlag);
             ImGui::PopStyleVar();
+            this->setup_menu();
             root->draw();
             ImGui::End();
 
@@ -131,15 +151,66 @@ namespace avUi
         }
     }
 
+    void NetworkManagerUi::setup_menu()
+    {
+        bool fontSliderActive = false;
+        if (ImGui::BeginMenuBar())
+        {
+            if (ImGui::BeginMenu("menu"))
+            {
+                if (ImGui::MenuItem("open", "Ctrl 1"))
+                {
+                    this->avRoot.log_info("open clicked");
+                }
+
+                ImGui::Separator();
+                if (ImGui::MenuItem("exit"))
+                {
+                    this->avRoot.log_info("close clicked");
+                    glfwSetWindowShouldClose(this->window, true);
+                }
+
+                ImGui::EndMenu();
+            }
+
+            // ImGui::PushStyleColor(ImGuiCol_Separator, ImVec4(0.45f, 0.55f, 0.75f, 0.90f));
+            ImGui::Separator();
+            // ImGui::PopStyleColor();
+
+            if (ImGui::BeginMenu("settings"))
+            {
+                ImGui::AlignTextToFramePadding();
+                ImGui::TextUnformatted("scale");
+                ImGui::SameLine();
+                ImGui::SetNextItemWidth(140.f);
+                ImGui::SliderFloat("##scale", &this->fontScale, 0.75f, 3.0f, "%.2fx");
+                fontSliderActive = ImGui::IsItemActive();
+
+                ImGui::EndMenu();
+            }
+            ImGui::EndMenuBar();
+        }
+
+        if (!fontSliderActive)
+        {
+            ImGui::GetIO().FontGlobalScale = this->fontScale;
+        }
+
+        if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_1, ImGuiInputFlags_RouteGlobal))
+        {
+            this->avRoot.log_info("open clicked");
+            // #TODO
+        }
+    }
+
     void NetworkManagerUi::setup_root(std::shared_ptr<avR::UiComponent> &root)
     {
         using Dir = avR::AvDiv::Direction;
-
         {
             avR::AvDiv::Config conf;
             conf.direction = Dir::Vertical;
             conf.size = ImVec2(0, 0);
-            conf.padding = ImVec2(30, 10);
+            conf.padding = ImVec2(0, 0); // no inset on the whole layout
             conf.spacing = 20.f;
             conf.border = false;
             std::static_pointer_cast<avR::AvDiv>(root)->configure(conf);
@@ -148,27 +219,32 @@ namespace avUi
         {
             avR::AvDiv::Config conf;
             conf.direction = Dir::Horizontal;
-            conf.size = ImVec2(0, 60);
-            conf.background = ImVec4(0.05f, 0.08f, 0.18f, 1.0f);
-            conf.border = true;
+            conf.size = ImVec2(0, 44);
+            conf.padding = ImVec2(16.0f, 0.0f);
+            conf.spacing = 8.f;
+            conf.background = ImVec4(0.10f, 0.11f, 0.13f, 1.0f);
+            conf.border = false;
             avR::UiComponent *header = root->add_child(std::make_unique<avR::AvDiv>("header", conf));
 
+            // Quiet toolbar action — soft fill, no border, auto-sized to label.
             avR::AvButton::Style style;
-            style.size = ImVec2(140, 36);
-            style.background = ImVec4(0.13f, 0.45f, 0.90f, 1.0f);
-            style.hovered = ImVec4(0.20f, 0.55f, 1.00f, 1.0f);
-            style.active = ImVec4(0.10f, 0.38f, 0.80f, 1.0f);
-            style.rounding = 6.f;
+            style.size = ImVec2(0.0f, 0.0f);
+            style.padding = ImVec2(14.0f, 5.0f);
+            style.background = ImVec4(0.18f, 0.20f, 0.24f, 1.0f);
+            style.hovered = ImVec4(0.24f, 0.28f, 0.34f, 1.0f);
+            style.active = ImVec4(0.14f, 0.16f, 0.20f, 1.0f);
+            style.text = ImVec4(0.90f, 0.92f, 0.95f, 1.0f);
+            style.rounding = 4.f;
+            style.border = 0.f;
             avR::UiComponent *addBtn =
-                header->add_child(std::make_unique<avR::AvButton>("add request", style));
+                header->add_child(std::make_unique<avR::AvButton>("new request", style));
             addBtn->set_on_click([this]
                                  {
                                      AvRequest req;
                                      req.id = this->nextRequestId++;
                                      this->requests.push_back(std::move(req));
                                      // focus the new entry right away
-                                     this->selectedRequest = static_cast<int>(this->requests.size()) - 1;
-                                 });
+                                     this->selectedRequest = static_cast<int>(this->requests.size()) - 1; });
         }
 
         {
@@ -177,10 +253,10 @@ namespace avUi
             conf.size = ImVec2(0, 0);
             conf.padding = ImVec2(0, 0);
             conf.spacing = 0.f;
-            conf.resizable = true;         // draggable divider between sidebar and mid
+            conf.resizable = true; // draggable divider between sidebar and mid
             conf.splitter_thickness = 6.f;
-            conf.resize_min = 150.f;       // sidebar can't shrink below this
-            conf.resize_max = 500.f;       // ...or grow past this
+            conf.resize_min = 150.f; // sidebar can't shrink below this
+            conf.resize_max = 500.f; // ...or grow past this
             avR::UiComponent *body = root->add_child(std::make_unique<avR::AvDiv>("body", conf));
 
             conf = {};
@@ -188,8 +264,6 @@ namespace avUi
             conf.size = ImVec2(220, 0);
             conf.border = true;
             avR::UiComponent *sidebar = body->add_child(std::make_unique<avR::AvDiv>("sidebar", conf));
-            // Data-driven list: re-rendered from `requests` every frame, so entries
-            // added by the header button show up without touching the tree.
             sidebar->add_child(std::make_unique<avR::AvCustom>(
                 "request_list", [this]
                 {
@@ -207,9 +281,8 @@ namespace avUi
                     }
                     if (this->requests.empty())
                     {
-                        ImGui::TextDisabled("(empty — press 'add request')");
-                    }
-                }));
+                        ImGui::TextDisabled("(empty — New request)");
+                    } }));
 
             conf = {};
             conf.size = ImVec2(0, 0);
@@ -232,8 +305,7 @@ namespace avUi
                     ImGui::Text("id:     %d", req.id);
                     ImGui::Text("method: %s", method_text(req.method));
                     ImGui::Text("url:    %s", req.url.c_str());
-                    ImGui::Text("body:   %s", req.body.empty() ? "(empty)" : req.body.c_str());
-                }));
+                    ImGui::Text("body:   %s", req.body.empty() ? "(empty)" : req.body.c_str()); }));
         }
     }
 }

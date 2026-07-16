@@ -14,9 +14,27 @@
 
 namespace avR
 {
+    /// @brief Current app-wide UI scale (tied to ImGui FontGlobalScale).
+    inline float ui_scale() noexcept
+    {
+        return ImGui::GetIO().FontGlobalScale;
+    }
+
+    /// @brief Scale a pixel extent. Keeps 0 as 0 (ImGui "fill / auto" sentinel).
+    inline float scale_px(float v) noexcept
+    {
+        return v == 0.0f ? 0.0f : v * ui_scale();
+    }
+
+    /// @brief Scale a size; 0 on either axis stays 0 (fill available).
+    inline ImVec2 scale_size(ImVec2 v) noexcept
+    {
+        return ImVec2(scale_px(v.x), scale_px(v.y));
+    }
+
     /// @brief Base of every UI element. Composite node: may hold children and/or
     ///        render itself. Rendered once per frame via Draw().
-    class UiComponent : protected AvRoot
+    class UiComponent
     {
     public:
         UiComponent(const UiComponent &) = delete;
@@ -25,10 +43,13 @@ namespace avR
 
         explicit UiComponent(std::string id = {});
 
-        using AvRoot::log_error;
-        using AvRoot::log_info;
-
-        virtual void draw() = 0;
+        /// @brief Per-frame entry point. Non-virtual on purpose: it opens this
+        ///        node's unique ImGui ID scope (so identical sibling labels never
+        ///        collide) and then dispatches to render(). Every node in the tree
+        ///        is drawn through here, so the ID-scope invariant holds for all of
+        ///        them without any component having to remember it. Subclasses
+        ///        implement render(), never draw().
+        void draw();
 
         /// @brief Layout negotiation used by resizable containers: a parent may
         ///        impose a size for the current frame (set_layout_size) and query
@@ -41,19 +62,36 @@ namespace avR
         const std::string &get_id() const noexcept;
 
     protected:
+        /// @brief Emit this component's ImGui calls for the current frame. Invoked
+        ///        by draw() inside this node's ID scope; use ScopedStyle for any
+        ///        style pushes so they unwind automatically. This is the one method
+        ///        a new component type must implement.
+        virtual void render() = 0;
+
+        /// @brief Logging for subclasses, forwarded to the composed AvRoot (tagged
+        ///        with this component's id). AvRoot is held by composition, not
+        ///        inherited — a UiComponent *has* a logger, it is not one.
+        void log_info(std::string_view msg) const noexcept { this->root.log_info(msg); }
+        void log_error(std::string_view msg) const noexcept { this->root.log_error(msg); }
+
         void fire_click() const;
         void draw_children();
 
         /// @brief Read access to the child list for layout components that need to
-        ///        position children themselves (e.g. horizontal rows).
-        const std::vector<std::unique_ptr<UiComponent>> &children() const noexcept
+        ///        position children themselves (e.g. horizontal rows). Named
+        ///        get_children() so the data member can simply be `children`.
+        const std::vector<std::unique_ptr<UiComponent>> &get_children() const noexcept
         {
-            return m_children;
+            return this->children;
         }
 
     private:
-        std::string m_id;
-        std::vector<std::unique_ptr<UiComponent>> m_children;
-        std::function<void()> m_onClick;
+        // Declared before `id`: the ctor copies the id into root's name, then
+        // moves it into `id` — member init runs in declaration order, so root
+        // must be constructed while the id string is still intact.
+        AvRoot root;
+        std::string id;
+        std::vector<std::unique_ptr<UiComponent>> children;
+        std::function<void()> onClick;
     };
 } // namespace avR

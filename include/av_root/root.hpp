@@ -17,7 +17,7 @@ namespace avR
 
         private:
         void log_core(std::ostream& out, std::string_view level, std::string_view msg)const noexcept;
-        std::string m_name;
+        std::string name;
     };
 } // namespace avR
 

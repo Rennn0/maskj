@@ -17,9 +17,10 @@ namespace avR
 
         AvCustom(std::string id, DrawFn drawFn);
 
-        void draw() override;
+    protected:
+        void render() override;
 
     private:
-        DrawFn m_drawFn;
+        DrawFn drawFn;
     };
 } // namespace avR

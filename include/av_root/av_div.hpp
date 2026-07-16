@@ -50,25 +50,24 @@ namespace avR
         // // Very dark blue
         // ImVec4(0.03f, 0.05f, 0.10f, 1.0f);
 
-        explicit AvDiv(std::string id, Config config = {});
+        explicit AvDiv(std::string id, Config config);
 
         /// @brief Replace the whole config; returns *this for chaining.
         AvDiv &configure(const Config &config);
 
-        /// @brief Mutable access for tweaking individual fields:
-        ///        div->config().border = true;
-        Config &config() noexcept { return m_config; }
-
-        void draw() override;
         void set_layout_size(const ImVec2 &size) override;
         ImVec2 preferred_size() const override;
+
+    protected:
+        void render() override;
 
     private:
         void layout_children();
 
-        Config m_config;
-        std::vector<float> m_extents;          ///< per-child current main-axis size (resizable)
-        ImVec2 m_layoutSize = ImVec2(0.0f, 0.0f); ///< size imposed by a resizable parent this frame
-        bool m_hasLayoutSize = false;
+        Config config;
+        std::vector<float> extents;             ///< per-child current main-axis size (resizable)
+        float extentsScale = 1.0f;              ///< FontGlobalScale used when extents were last set
+        ImVec2 layoutSize = ImVec2(0.0f, 0.0f); ///< size imposed by a resizable parent this frame
+        bool hasLayoutSize = false;
     };
 } // namespace avR

@@ -1,50 +1,54 @@
 #include <av_root/av_div.hpp>
+#include <av_root/im_scope.hpp>
 
+#include <algorithm>
 #include <cstddef>
 
 namespace avR
 {
     AvDiv::AvDiv(std::string id, Config config)
-        : UiComponent(std::move(id)), m_config(config)
+        : UiComponent(std::move(id)), config(config)
     {
     }
 
     AvDiv &AvDiv::configure(const Config &config)
     {
-        m_config = config;
+        this->config = config;
         return *this;
     }
 
     void AvDiv::set_layout_size(const ImVec2 &size)
     {
-        m_layoutSize = size;
-        m_hasLayoutSize = true;
+        this->layoutSize = size;
+        this->hasLayoutSize = true;
     }
 
     ImVec2 AvDiv::preferred_size() const
     {
-        return m_config.size;
+        return scale_size(this->config.size);
     }
 
-    void AvDiv::draw()
+    void AvDiv::render()
     {
-        ImGui::PushID(this);
+        // Apply configurable spacing/padding for the region's scope. The guard
+        // unwinds every push at end of scope — no manual pop bookkeeping.
+        ScopedStyle style;
+        const float spacing = scale_px(this->config.spacing);
+        style.var(ImGuiStyleVar_WindowPadding, scale_size(this->config.padding))
+            .var(ImGuiStyleVar_ItemSpacing, ImVec2(spacing, spacing));
 
-        // Apply configurable spacing/padding for the region's scope.
-        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, m_config.padding);
-        ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing,
-                            ImVec2(m_config.spacing, m_config.spacing));
+        if (this->config.background.w > 0.0f)
+            style.color(ImGuiCol_ChildBg, this->config.background);
 
-        const bool hasBackground = m_config.background.w > 0.0f;
-        if (hasBackground)
-            ImGui::PushStyleColor(ImGuiCol_ChildBg, m_config.background);
-
-        const ImGuiChildFlags childFlags =
-            m_config.border ? ImGuiChildFlags_Borders : ImGuiChildFlags_None;
+        // Without Borders, BeginChild ignores WindowPadding unless this flag is set.
+        ImGuiChildFlags childFlags = ImGuiChildFlags_AlwaysUseWindowPadding;
+        if (this->config.border)
+            childFlags |= ImGuiChildFlags_Borders;
 
         // A resizable parent may have imposed a size on us this frame; otherwise
         // fall back to the configured size ((0,0) => fill available space).
-        const ImVec2 size = m_hasLayoutSize ? m_layoutSize : m_config.size;
+        // Imposed sizes are already in screen px; config sizes are design units.
+        const ImVec2 size = this->hasLayoutSize ? this->layoutSize : scale_size(this->config.size);
 
         if (ImGui::BeginChild(get_id().c_str(), size, childFlags))
         {
@@ -52,27 +56,36 @@ namespace avR
         }
         ImGui::EndChild();
 
-        if (hasBackground)
-            ImGui::PopStyleColor();
-        ImGui::PopStyleVar(2);
-
-        ImGui::PopID();
-
         // The imposed size lasts a single frame; the parent re-applies it each draw.
-        m_hasLayoutSize = false;
+        this->hasLayoutSize = false;
     }
 
     void AvDiv::layout_children()
     {
-        const auto &kids = children();
+        const auto &kids = get_children();
         if (kids.empty())
             return;
 
-        const bool horizontal = (m_config.direction == Direction::Horizontal);
+        const bool horizontal = (this->config.direction == Direction::Horizontal);
+        const float s = ui_scale();
 
         // --- simple (non-resizable) flow ------------------------------------
-        if (!m_config.resizable)
+        if (!this->config.resizable)
         {
+            if (horizontal)
+            {
+                // Vertically center the row within the padded content area.
+                float rowH = 0.0f;
+                for (const std::unique_ptr<UiComponent> &child : kids)
+                {
+                    const float h = child->preferred_size().y;
+                    rowH = std::max(rowH, h > 0.0f ? h : ImGui::GetFrameHeight());
+                }
+                const float availH = ImGui::GetContentRegionAvail().y;
+                if (availH > rowH)
+                    ImGui::SetCursorPosY(ImGui::GetCursorPosY() + (availH - rowH) * 0.5f);
+            }
+
             bool first = true;
             for (const std::unique_ptr<UiComponent> &child : kids)
             {
@@ -87,14 +100,22 @@ namespace avR
         // --- resizable: each leading child gets a stored main-axis extent plus
         //     a draggable splitter on its trailing edge; the last child fills.
         //     Seed extents once from each child's preferred size.
-        if (m_extents.size() != kids.size())
+        if (this->extents.size() != kids.size())
         {
-            m_extents.assign(kids.size(), 0.0f);
+            this->extents.assign(kids.size(), 0.0f);
             for (std::size_t i = 0; i < kids.size(); ++i)
             {
                 const ImVec2 pref = kids[i]->preferred_size();
-                m_extents[i] = horizontal ? pref.x : pref.y;
+                this->extents[i] = horizontal ? pref.x : pref.y;
             }
+            this->extentsScale = s;
+        }
+        else if (this->extentsScale > 0.0f && this->extentsScale != s)
+        {
+            const float ratio = s / this->extentsScale;
+            for (float &extent : this->extents)
+                extent *= ratio;
+            this->extentsScale = s;
         }
 
         bool first = true;
@@ -118,40 +139,43 @@ namespace avR
             }
 
             // Leading child: pin its main-axis extent, let the cross axis fill.
-            kids[i]->set_layout_size(horizontal ? ImVec2(m_extents[i], 0.0f)
-                                                : ImVec2(0.0f, m_extents[i]));
+            kids[i]->set_layout_size(horizontal ? ImVec2(this->extents[i], 0.0f)
+                                                : ImVec2(0.0f, this->extents[i]));
             kids[i]->draw();
 
             // Draggable splitter on the trailing edge.
             gap();
-            ImGui::PushID(static_cast<int>(i));
+            ScopedId splitterId(static_cast<int>(i));
 
             const ImVec2 region = ImGui::GetContentRegionAvail();
+            const float thickness = scale_px(this->config.splitter_thickness);
             const ImVec2 handle = horizontal
-                                      ? ImVec2(m_config.splitter_thickness, region.y)
-                                      : ImVec2(region.x, m_config.splitter_thickness);
+                                      ? ImVec2(thickness, region.y)
+                                      : ImVec2(region.x, thickness);
 
-            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(1.0f, 1.0f, 1.0f, 0.06f));
-            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(1.0f, 1.0f, 1.0f, 0.20f));
-            ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(1.0f, 1.0f, 1.0f, 0.35f));
-            ImGui::Button("##splitter", handle);
-            ImGui::PopStyleColor(3);
+            {
+                ScopedStyle splitterStyle;
+                splitterStyle.color(ImGuiCol_Button, ImVec4(1.0f, 1.0f, 1.0f, 0.06f))
+                    .color(ImGuiCol_ButtonHovered, ImVec4(1.0f, 1.0f, 1.0f, 0.20f))
+                    .color(ImGuiCol_ButtonActive, ImVec4(1.0f, 1.0f, 1.0f, 0.35f));
+                ImGui::Button("##splitter", handle);
+            }
 
             if (ImGui::IsItemHovered() || ImGui::IsItemActive())
                 ImGui::SetMouseCursor(horizontal ? ImGuiMouseCursor_ResizeEW
                                                  : ImGuiMouseCursor_ResizeNS);
 
             if (ImGui::IsItemActive())
-                m_extents[i] += horizontal ? ImGui::GetIO().MouseDelta.x
+                this->extents[i] += horizontal ? ImGui::GetIO().MouseDelta.x
                                            : ImGui::GetIO().MouseDelta.y;
 
-            // Clamp to the configured min/max.
-            if (m_extents[i] < m_config.resize_min)
-                m_extents[i] = m_config.resize_min;
-            if (m_config.resize_max > 0.0f && m_extents[i] > m_config.resize_max)
-                m_extents[i] = m_config.resize_max;
-
-            ImGui::PopID();
+            // Clamp to the configured min/max (design units → screen px).
+            const float resizeMin = scale_px(this->config.resize_min);
+            const float resizeMax = scale_px(this->config.resize_max);
+            if (this->extents[i] < resizeMin)
+                this->extents[i] = resizeMin;
+            if (resizeMax > 0.0f && this->extents[i] > resizeMax)
+                this->extents[i] = resizeMax;
         }
     }
 } // namespace avR
