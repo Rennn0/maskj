@@ -11,12 +11,12 @@ namespace avR
         explicit AvRoot(std::string name);
         ~AvRoot();
 
-        void log_info(const std::string_view msg)const;
-        void log_error(const std::string_view msg)const;
+        void log_info(const std::string_view msg)const noexcept;
+        void log_error(const std::string_view msg)const noexcept;
         const std::string& get_name()const noexcept;
 
         private:
-        void log_core(std::ostream& out, std::string_view level, std::string_view msg)const;
+        void log_core(std::ostream& out, std::string_view level, std::string_view msg)const noexcept;
         std::string m_name;
     };
 } // namespace avR

@@ -9,7 +9,7 @@ namespace avR
     {
     }
 
-    inline void AvRoot::log_info(const std::string_view msg) const noexcept
+    void AvRoot::log_info(const std::string_view msg) const noexcept
     {
         this->log_core(std::cout, "info", msg);
     }

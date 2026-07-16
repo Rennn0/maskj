@@ -72,6 +72,7 @@ add_executable(arvis
     src/network_manager_ui.cpp
     src/network_manager.cpp
     src/root.cpp
+    src/ui_component.cpp
 )
 
 target_include_directories(arvis PRIVATE

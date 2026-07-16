@@ -9,10 +9,11 @@
 #include <string>
 #include <av_net/network_manager.hpp>
 #include <av_root/root.hpp>
+#include <av_root/ui_component.hpp>
 
 namespace avUi
 {
-    class NetworkManagerUi
+    class NetworkManagerUi : private avR::UiComponent
     {
     public:
         NetworkManagerUi();
