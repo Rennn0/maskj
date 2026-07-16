@@ -2,17 +2,13 @@
 
 namespace avR
 {
-    UiComponent::UiComponent(std::string id) : AvRoot("hjuh") ,m_id(std::move(id))
-    {
-    }
-
-    UiComponent::~UiComponent()
+    UiComponent::UiComponent(std::string id) : AvRoot(id), m_id(std::move(id))
     {
     }
 
     UiComponent *UiComponent::add_child(std::unique_ptr<UiComponent> child)
     {
-        m_children.push_back(child);
+        m_children.push_back(std::move(child));
         return m_children.back().get();
     }
 

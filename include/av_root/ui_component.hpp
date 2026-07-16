@@ -1,10 +1,16 @@
 #pragma once
 
+#include "imgui.h"
+#include "imgui_impl_glfw.h"
+#include "imgui_impl_opengl3.h"
+
+#include <GLFW/glfw3.h>
 #include <functional>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
+#include <av_root/root.hpp>
 
 namespace avR
 {
@@ -18,6 +24,9 @@ namespace avR
         virtual ~UiComponent() = default;
 
         explicit UiComponent(std::string id = {});
+
+        using AvRoot::log_error;
+        using AvRoot::log_info;
 
         virtual void draw() = 0;
         UiComponent *add_child(std::unique_ptr<UiComponent> child);

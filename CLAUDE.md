@@ -262,16 +262,8 @@ macOS ships bash 3.2, so `brew install bash` there).
 
 ## 9. Git
 
-- Branch: `main`. Remote: `origin` → `github.com/Rennn0/maskj.git` (rename to `arvis`
-  pending; after renaming on GitHub run
-  `git remote set-url origin https://github.com/Rennn0/arvis.git`).
+- Branch: `main`. Remote: `origin` → `github.com/Rennn0/arvis.git`.
 - `build/` and `responses.dev/` are git-ignored.
 - Only commit when explicitly asked.
 
 ---
-
-## 10. Design docs
-
-- `ui_foundation.md` — detailed design for the `UiComponent` system (Composite tree
-  over ImGui, ownership, data binding, event-loop integration, gotchas). Read it
-  before working on the UI component layer.

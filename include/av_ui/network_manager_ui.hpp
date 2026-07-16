@@ -1,8 +1,4 @@
 #pragma once
-#include "imgui.h"
-#include "imgui_impl_glfw.h"
-#include "imgui_impl_opengl3.h"
-#include <GLFW/glfw3.h>
 #include <iostream>
 #include <chrono>
 #include <future>
@@ -13,7 +9,7 @@
 
 namespace avUi
 {
-    class NetworkManagerUi : private avR::UiComponent
+    class NetworkManagerUi : public avR::UiComponent
     {
     public:
         NetworkManagerUi();
@@ -22,9 +18,12 @@ namespace avUi
         /// @brief Opens the arvis GUI window and runs the event/render loop until
         ///        the user closes the window.
         /// @return process exit code (0 on clean exit, non-zero on init failure).
-        int start() const;
+        void draw() override;
 
     private:
+        int m_width;
+        int m_height;
         avR::AvRoot m_root;
+        GLFWwindow *m_window;
     };
 }

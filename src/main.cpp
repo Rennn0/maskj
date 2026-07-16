@@ -2,6 +2,6 @@
 
 int main()
 {
-    const avUi::NetworkManagerUi *nmUi = new avUi::NetworkManagerUi();
-    nmUi->start();
+    avR::UiComponent *const networkManager = new avUi::NetworkManagerUi();
+    networkManager->draw();
 }
