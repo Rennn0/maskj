@@ -4,4 +4,7 @@ int main()
 {
     avR::UiComponent *const networkManager = new avUi::NetworkManagerUi();
     networkManager->draw();
+
+    delete networkManager;
+    return 0;
 }

@@ -7,7 +7,6 @@ namespace avR
 
     AvRoot::~AvRoot()
     {
-        m_name.clear();
     }
 
     void AvRoot::log_info(const std::string_view msg) const noexcept

@@ -74,6 +74,8 @@ add_executable(arvis
     src/root.cpp
     src/ui_component.cpp
     src/av_button.cpp
+    src/av_custom.cpp
+    src/av_div.cpp
 )
 
 target_include_directories(arvis PRIVATE

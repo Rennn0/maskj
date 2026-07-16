@@ -29,6 +29,13 @@ namespace avR
         using AvRoot::log_info;
 
         virtual void draw() = 0;
+
+        /// @brief Layout negotiation used by resizable containers: a parent may
+        ///        impose a size for the current frame (set_layout_size) and query
+        ///        a child's preferred size. Leaf components ignore both.
+        virtual void set_layout_size(const ImVec2 &size) { (void)size; }
+        virtual ImVec2 preferred_size() const { return ImVec2(0.0f, 0.0f); }
+
         UiComponent *add_child(std::unique_ptr<UiComponent> child);
         UiComponent &set_on_click(std::function<void()> handler);
         const std::string &get_id() const noexcept;
@@ -36,6 +43,13 @@ namespace avR
     protected:
         void fire_click() const;
         void draw_children();
+
+        /// @brief Read access to the child list for layout components that need to
+        ///        position children themselves (e.g. horizontal rows).
+        const std::vector<std::unique_ptr<UiComponent>> &children() const noexcept
+        {
+            return m_children;
+        }
 
     private:
         std::string m_id;
