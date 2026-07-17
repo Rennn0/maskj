@@ -8,6 +8,16 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+# The Windows build uses the x64-windows-static vcpkg triplet so libcurl (and
+# its deps) are baked into the binary. The MSVC C runtime must then be linked
+# statically too, or the released .exe would still need the VC++ redistributable
+# and would mismatch the /MT-built vcpkg libs at link time. CMP0091 (NEW since
+# CMake 3.15) makes this variable the single source of truth for /MT vs /MD, and
+# it applies to every target below (arvis, imgui, glfw) so they stay consistent.
+if(MSVC)
+    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+endif()
+
 # Use a prebuilt libcurl (install via vcpkg or system package manager).
 # This keeps the generated solution clean — only the arvis project appears,
 # with no third-party curl subprojects.

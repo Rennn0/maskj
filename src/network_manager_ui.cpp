@@ -1,4 +1,5 @@
 #include <av_ui/network_manager_ui.hpp>
+#include <av_ui/logo_icon.hpp>
 #include <av_root/av_button.hpp>
 #include <av_root/av_custom.hpp>
 #include <av_root/av_div.hpp>
@@ -6,6 +7,25 @@
 // Including <GLFW/glfw3.h> without GLFW_INCLUDE_NONE also pulls in the platform
 // OpenGL header, giving us the GL 1.1 calls (glViewport/glClear/...) we use for
 // the frame clear — portably across Windows/Linux/macOS.
+
+// Win32-only: reach the native HWND so DWM can paint the OS title bar (caption +
+// min/max/close) in the dark theme. GLFW doesn't expose this. Guarded so the
+// Linux/macOS builds are untouched; dwmapi is auto-linked via #pragma comment.
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#define GLFW_EXPOSE_NATIVE_WIN32
+#include <GLFW/glfw3native.h>
+#include <dwmapi.h>
+#pragma comment(lib, "dwmapi.lib")
+#ifndef DWMWA_USE_IMMERSIVE_DARK_MODE
+#define DWMWA_USE_IMMERSIVE_DARK_MODE 20 // Win10 20H1+ / Win11; value fixed by DWM
+#endif
+#endif
 
 namespace avUi
 {
@@ -60,7 +80,9 @@ namespace avUi
         glfwWindowHint(GLFW_DECORATED, GLFW_TRUE);
         glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
         glfwWindowHint(GLFW_MAXIMIZED, GLFW_TRUE);
-        glfwWindowHint(GLFW_VISIBLE, GLFW_TRUE);
+        // Create hidden: we style the title bar dark before the first paint, then
+        // show the window in run() so the caption never flashes white.
+        glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
         this->width = mode->width;
         this->height = mode->height;
     }
@@ -83,6 +105,22 @@ namespace avUi
             this->avRoot.log_error(desc ? desc : "glfwCreateWindow failed");
             throw std::runtime_error("glfw create window failed");
         }
+
+        GLFWimage icons[avUi::logo_icon_count];
+        for (int i = 0; i < avUi::logo_icon_count; ++i)
+            icons[i] = GLFWimage{avUi::logo_icon_images[i].width,
+                                 avUi::logo_icon_images[i].height,
+                                 avUi::logo_icon_images[i].pixels};
+        glfwSetWindowIcon(this->window, avUi::logo_icon_count, icons);
+
+#ifdef _WIN32
+        {
+            HWND hwnd = glfwGetWin32Window(this->window);
+            BOOL useDark = TRUE;
+            DwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, &useDark, sizeof(useDark));
+        }
+#endif
+
         glfwMakeContextCurrent(this->window);
         glfwMaximizeWindow(this->window);
         glfwSwapInterval(1);
@@ -95,6 +133,10 @@ namespace avUi
 
         std::shared_ptr<avR::UiComponent> root = std::make_shared<avR::AvDiv>("root", avR::AvDiv::Config{});
         this->setup_root(root);
+
+        // Everything (icon, dark caption, GL/ImGui state) is ready — reveal the
+        // window now so the dark title bar is the first thing the user sees.
+        glfwShowWindow(this->window);
 
         const double fps = 1. / 60.;
         double lastFrame = 0.;
@@ -164,7 +206,7 @@ namespace avUi
                 }
 
                 ImGui::Separator();
-                if (ImGui::MenuItem("exit Esc"))
+                if (ImGui::MenuItem("exit", "Esc"))
                 {
                     this->avRoot.log_info("close clicked");
                     glfwSetWindowShouldClose(this->window, true);

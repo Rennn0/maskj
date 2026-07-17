@@ -59,7 +59,10 @@ jobs:
   build-linux:
     needs: check
     if: needs.check.outputs.is_release == 'true'
-    runs-on: ubuntu-latest
+    # Pinned to an older image on purpose: linking against its glibc keeps the
+    # binary runnable on older distros too (a binary built on newer glibc will
+    # not run on machines that ship an older one).
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
         with:
@@ -87,6 +90,7 @@ jobs:
         run: |
           mkdir -p dist
           cp build/linux-release/arvis dist/arvis-linux-x64
+          strip dist/arvis-linux-x64          # drop debug symbols -> smaller binary
 
       - uses: actions/upload-artifact@v4
         with:
@@ -176,6 +180,7 @@ jobs:
         run: |
           mkdir -p dist
           cp build/macos-release/arvis dist/${{ matrix.asset }}
+          strip -x dist/${{ matrix.asset }}   # drop local symbols -> smaller binary
 
       - uses: actions/upload-artifact@v4
         with:
