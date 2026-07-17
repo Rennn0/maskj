@@ -215,9 +215,7 @@ namespace avUi
                 ImGui::EndMenu();
             }
 
-            // ImGui::PushStyleColor(ImGuiCol_Separator, ImVec4(0.45f, 0.55f, 0.75f, 0.90f));
             ImGui::Separator();
-            // ImGui::PopStyleColor();
 
             if (ImGui::BeginMenu("settings"))
             {
