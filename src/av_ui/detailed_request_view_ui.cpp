@@ -4,7 +4,7 @@ namespace avUi
 {
     DetailedRequestViewUi::DetailedRequestViewUi(std::string id) : avR::UiComponent(std::move(id)), footer_height(-1.f)
     {
-        this->windowFlags = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize;
+        this->window_flags = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize;
     }
 
     DetailedRequestViewUi::DetailedRequestViewUi(std::string id, avR::AvState *sharedState) : DetailedRequestViewUi(id)
@@ -27,7 +27,7 @@ namespace avUi
         ImGui::SetNextWindowPos(ImVec2(x * .2f, 0), ImGuiCond_Once);
         ImGui::SetNextWindowSize(ImVec2(x * .8f, y), ImGuiCond_Once);
 
-        if (ImGui::Begin(this->get_id().c_str(), &this->shared_state->show_req_detailed_view, this->windowFlags))
+        if (ImGui::Begin(this->get_id().c_str(), &this->shared_state->show_req_detailed_view, this->window_flags))
         {
             const ImGuiStyle &style = ImGui::GetStyle();
             const ImVec2 availRegion = ImGui::GetContentRegionAvail();
@@ -83,8 +83,52 @@ namespace avUi
     }
     void DetailedRequestViewUi::render_header(const ImGuiStyle &style)
     {
-        ImGui::TextUnformatted(this->shared_state->display_request->title.value_or("#").c_str());
-        ImGui::InputText("##title", const_cast<std::string *>(&this->shared_state->display_request->title.value()));
+        avR::AvRequest &req = *this->shared_state->display_request;
+        if (!req.title.has_value())
+            req.title.emplace(req.display_name());
+
+        const float rowH = ImGui::GetFrameHeight();
+        const float availH = ImGui::GetContentRegionAvail().y;
+        if (availH > rowH)
+            ImGui::SetCursorPosY(ImGui::GetCursorPosY() + (availH - rowH) * 0.5f);
+
+        ImGui::SetCursorPosX(ImGui::GetCursorPosX() + 20.f);
+        ImGui::AlignTextToFramePadding();
+        ImGui::PushStyleColor(ImGuiCol_Text, this->http_method_color);
+        const char *current = avNet::NetworkManager::method_text(req.method);
+        ImGui::SetNextItemWidth(ImGui::CalcTextSize(current).x + style.FramePadding.x * 2.0f + ImGui::GetFrameHeight());
+
+        if (ImGui::BeginCombo("##method", current))
+        {
+            static constexpr avNet::request_method methods[] = {
+                avNet::request_method::get,
+                avNet::request_method::post,
+                avNet::request_method::put,
+                avNet::request_method::del,
+            };
+
+            for (avNet::request_method m : methods)
+            {
+                const bool selected = (req.method == m);
+                if (ImGui::Selectable(avNet::NetworkManager::method_text(m), selected))
+                    req.method = m;
+                if (selected)
+                    ImGui::SetItemDefaultFocus();
+            }
+            ImGui::EndCombo();
+        }
+        ImGui::PopStyleColor();
+
+        ImGui::SameLine();
+        ImGui::SetCursorPosX(ImGui::GetCursorPosX() + 20.f);
+        ImGui::InputText("##title_edit", &req.title.value(),
+                         ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_AutoSelectAll);
+
+        ImGui::SameLine();
+        const char *send_label = "Send";
+        if (ImGui::Button(send_label))
+        {
+        }
     }
     void DetailedRequestViewUi::render_main_content(const ImGuiStyle &style)
     {

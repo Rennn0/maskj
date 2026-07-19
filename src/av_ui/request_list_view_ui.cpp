@@ -32,11 +32,11 @@ namespace avUi
         this->request_list_state->requests.push_back(avR::AvRequest{
             .id = 3, .timestamp = 5000, .method = avNet::request_method::get, .title = "delete product"});
         this->request_list_state->requests.push_back(
-            avR::AvRequest{.id = 4, .timestamp = 5000, .method = avNet::request_method::get, .title = "healthcheck"});
+            avR::AvRequest{.id = 4, .timestamp = 5000, .method = avNet::request_method::post, .title = "healthcheck"});
+        this->request_list_state->requests.push_back(avR::AvRequest{
+            .id = 5, .timestamp = 5000, .method = avNet::request_method::patch, .title = "get products"});
         this->request_list_state->requests.push_back(
-            avR::AvRequest{.id = 5, .timestamp = 5000, .method = avNet::request_method::get, .title = "get products"});
-        this->request_list_state->requests.push_back(
-            avR::AvRequest{.id = 6, .timestamp = 5000, .method = avNet::request_method::get, .title = "post product"});
+            avR::AvRequest{.id = 6, .timestamp = 5000, .method = avNet::request_method::del, .title = "post product"});
         this->request_list_state->requests.push_back(avR::AvRequest{
             .id = 7, .timestamp = 5000, .method = avNet::request_method::get, .title = "delete product"});
         this->request_list_state->requests.push_back(
@@ -102,7 +102,7 @@ namespace avUi
         ImGui::TextDisabled("env:");
         ImGui::SameLine();
         const char *env = this->request_list_state->environment.c_str();
-        ImGui::TextColored(ImColor(8, 249, 24), "%s", env);
+        ImGui::TextColored(this->environment_color, "%s", env);
 
         const char *addLabel = "+";
         const float addLabelButtonWidth = ImGui::CalcTextSize(addLabel).x + style.FramePadding.x * 3.f;
@@ -144,9 +144,8 @@ namespace avUi
                 ImGui::TextDisabled("Today");
                 ImGui::Unindent(12.f);
                 ImGui::Dummy(ImVec2(0.0f, 5.0f));
-                for (const avR::AvRequest &request :
-                     this->request_list_state->requests |
-                         std::views::filter([](const avR::AvRequest &r) { return r.id < 5; }))
+                for (avR::AvRequest &request : this->request_list_state->requests |
+                                                   std::views::filter([](const avR::AvRequest &r) { return r.id < 5; }))
                 {
                     ImGui::PushID(request.id);
                     if (ImGui::Selectable(request.display_name().c_str(), selected && request.id == selected->id,
@@ -162,9 +161,8 @@ namespace avUi
                 ImGui::TextDisabled("Yesterday");
                 ImGui::Unindent(12.f);
                 ImGui::Dummy(ImVec2(0.0f, 5.0f));
-                for (const avR::AvRequest &request :
-                     this->request_list_state->requests |
-                         std::views::filter([](avR::AvRequest &r) { return r.id >= 5; }))
+                for (avR::AvRequest &request : this->request_list_state->requests |
+                                                   std::views::filter([](avR::AvRequest &r) { return r.id >= 5; }))
                 {
                     ImGui::PushID(request.id);
                     if (ImGui::Selectable(request.display_name().c_str(), selected && request.id == selected->id,

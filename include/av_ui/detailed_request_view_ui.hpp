@@ -17,7 +17,7 @@ namespace avUi
 
         void render() override;
 
-        ImGuiWindowFlags windowFlags;
+        ImGuiWindowFlags window_flags;
         avR::AvInterViewSharedState *shared_state;
 
         void render_header(const ImGuiStyle &style);

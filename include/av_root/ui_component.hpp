@@ -20,6 +20,11 @@ namespace avR
     ///        render itself. Rendered once per frame via Draw().
     class UiComponent
     {
+
+    public:
+        const ImVec4 http_method_color = ImColor(8, 249, 24);
+        const ImVec4 environment_color = ImColor(8, 249, 24);
+
     public:
         UiComponent(const UiComponent &) = delete;
         UiComponent &operator=(const UiComponent &) = delete;

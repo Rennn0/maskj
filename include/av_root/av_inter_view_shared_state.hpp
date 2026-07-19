@@ -9,7 +9,7 @@ namespace avR
     public:
         bool show_req_list_view;
         bool show_req_detailed_view;
-        const AvRequest *display_request;
+        AvRequest *display_request;
 
     public:
         AvInterViewSharedState();
