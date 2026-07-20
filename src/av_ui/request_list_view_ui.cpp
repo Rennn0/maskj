@@ -118,18 +118,18 @@ namespace avUi
                 ImGui::Dummy(ImVec2(0.0f, 5.0f));
                 for (std::shared_ptr<avR::AvRequest> &request :
                      this->request_list_state->requests |
-                         std::views::filter([](const std::shared_ptr<avR::AvRequest> &r) { return r->id < 5; }))
+                         std::views::filter([this](const std::shared_ptr<avR::AvRequest> &req)
+                                            { return root.is_today(req->timestamp); }))
                 {
                     this->render_request_row(selected, request.get(), style);
                 }
                 ImGui::Dummy(ImVec2(0.0f, 5.0f));
-                ImGui::Indent(12.f);
-                ImGui::TextDisabled("Yesterday");
-                ImGui::Unindent(12.f);
+                ImGui::Separator();
                 ImGui::Dummy(ImVec2(0.0f, 5.0f));
                 for (std::shared_ptr<avR::AvRequest> &request :
                      this->request_list_state->requests |
-                         std::views::filter([](const std::shared_ptr<avR::AvRequest> &r) { return r->id >= 5; }))
+                         std::views::filter([this](const std::shared_ptr<avR::AvRequest> &req)
+                                            { return !root.is_today(req->timestamp); }))
                 {
                     this->render_request_row(selected, request.get(), style);
                 }

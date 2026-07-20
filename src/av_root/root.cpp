@@ -1,7 +1,8 @@
 #include <av_root/root.hpp>
+#include <chrono>
 namespace avR
 {
-    AvRoot::AvRoot(std::string name) : name(std::move(name))
+    AvRoot::AvRoot(std::string id) : id(std::move(id))
     {
     }
 
@@ -21,11 +22,20 @@ namespace avR
 
     void AvRoot::log_core(std::ostream &out, std::string_view level, std::string_view msg) const noexcept
     {
-        out << '[' << level << ']' << '(' << this->name << ')' << msg << std::endl;
+        out << '[' << level << ']' << '(' << this->id << ')' << msg << std::endl;
     }
 
-    const std::string &AvRoot::get_name() const noexcept
+    const std::string &AvRoot::get_id() const noexcept
     {
-        return this->name;
+        return this->id;
+    }
+
+    bool AvRoot::is_today(int64_t timestamp) const
+    {
+        using namespace std::chrono;
+        const auto tp = sys_time<milliseconds>{milliseconds{timestamp}};
+        const auto req_day = floor<days>(tp);
+        const auto today = floor<days>(system_clock::now());
+        return req_day == today;
     }
 } // namespace avR

@@ -71,11 +71,9 @@ namespace avR
         /// @brief component specific style per frame
         avR::UiScopedStyle::Style style;
 
-    private:
-        // Declared before `id`: the ctor copies the id into root's name, then
-        // moves it into `id` — member init runs in declaration order, so root
-        // must be constructed while the id string is still intact.
         AvRoot root;
+
+    private:
         std::string id;
         std::vector<std::unique_ptr<UiComponent>> children;
         std::function<void()> onClick;
