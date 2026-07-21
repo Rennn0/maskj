@@ -2,6 +2,7 @@
 #include <av_ui/logo_icon.hpp>
 
 #include <ranges>
+#include <algorithm>
 #include <chrono>
 
 namespace avUi
@@ -24,7 +25,10 @@ namespace avUi
         this->request_list_state->environment = "Development"; // #TODO roca env sys aewyoba esec sheicvleba
 
         if (this->request_list_state->requests.size() > 0)
-            this->shared_state->display_request = this->request_list_state->requests.front().get();
+        {
+            auto latest = std::ranges::max_element(this->request_list_state->requests, {}, &avR::AvRequest::timestamp);
+            this->shared_state->display_request = latest->get();
+        }
     }
 
     RequstListViewUi::~RequstListViewUi()
@@ -84,9 +88,8 @@ namespace avUi
         ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - addLabelButtonWidth);
         if (ImGui::Button(addLabel))
         {
-            using namespace std::chrono;
             std::shared_ptr<avR::AvRequest> req = std::make_shared<avR::AvRequest>(avR::AvRequest{
-                .timestamp = duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count(),
+                .timestamp = this->root.get_timestamp(),
             });
             this->request_list_state->requests.push_back(std::move(req));
             this->request_storage->upsert(this->request_list_state->requests);
@@ -162,7 +165,8 @@ namespace avUi
     void RequstListViewUi::render_footer(const ImGuiStyle &style)
     {
         const float savedTxtOffset = 15.f;
-        const int savedCount = this->request_list_state->requests.size();;
+        const int savedCount = this->request_list_state->requests.size();
+        ;
         ImGui::SetCursorPosX(ImGui::GetCursorPosX() + savedTxtOffset);
         ImGui::AlignTextToFramePadding();
         ImGui::Text("%d saved", savedCount);

@@ -149,6 +149,11 @@ namespace avUi
         if (ImGui::Button(send_label))
         {
         }
+
+        ImGui::SameLine();
+        ImGui::Spacing();
+        ImGui::SameLine();
+        ImGui::TextDisabled("%s", this->root.timestamp_to_date(req.timestamp).c_str());
     }
     void DetailedRequestViewUi::render_main_content(const ImGuiStyle &style)
     {

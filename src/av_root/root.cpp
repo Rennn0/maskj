@@ -1,5 +1,6 @@
 #include <av_root/root.hpp>
 #include <chrono>
+#include <ctime>
 namespace avR
 {
     AvRoot::AvRoot(std::string id) : id(std::move(id))
@@ -30,12 +31,29 @@ namespace avR
         return this->id;
     }
 
-    bool AvRoot::is_today(int64_t timestamp) const
+    bool AvRoot::is_today(int64_t ts) const
     {
         using namespace std::chrono;
-        const auto tp = sys_time<milliseconds>{milliseconds{timestamp}};
+        const auto tp = sys_time<milliseconds>{milliseconds{ts}};
         const auto req_day = floor<days>(tp);
         const auto today = floor<days>(system_clock::now());
         return req_day == today;
+    }
+
+    std::string AvRoot::timestamp_to_date(int64_t ts) const
+    {
+        using namespace std::chrono;
+        sys_time<milliseconds> tp{milliseconds{ts}};
+        std::time_t tt = system_clock::to_time_t(tp);
+        std::tm tm = *std::localtime(&tt);
+        char buf[40];
+        std::strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", &tm);
+        return buf;
+    }
+
+    const int64_t AvRoot::get_timestamp() const
+    {
+        using namespace std::chrono;
+        return duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count();
     }
 } // namespace avR
