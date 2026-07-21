@@ -7,6 +7,30 @@
 
 namespace avUi
 {
+    bool try_swap(std::vector<std::shared_ptr<avR::AvRequest>> &vec, avR::AvRequest *r1, avR::AvRequest *r2)
+    {
+        auto it1 = std::find_if(vec.begin(), vec.end(),
+                                [r1](const std::shared_ptr<avR::AvRequest> &p) { return p.get() == r1; });
+        auto it2 = std::find_if(vec.begin(), vec.end(),
+                                [r2](const std::shared_ptr<avR::AvRequest> &p) { return p.get() == r2; });
+
+        if (it1 != vec.end() && it2 != vec.end())
+        {
+            std::iter_swap(it1, it2);
+            return true;
+        }
+
+        return false;
+    }
+
+    void apply_reordering(std::vector<std::shared_ptr<avR::AvRequest>> &vec)
+    {
+        for (size_t i = 0; i < vec.size(); i++)
+        {
+            vec[i]->order_by = i;
+        }
+    }
+
     RequstListViewUi::RequstListViewUi(std::string id)
         : avR::UiComponent(std::move(id)), request_list_state(std::make_shared<avR::AvRequestListState>()),
           request_storage(std::make_unique<avS::AvRequestStorage>())
@@ -26,9 +50,9 @@ namespace avUi
 
         if (this->request_list_state->requests.size() > 0)
         {
-            const auto &latest =
-                std::ranges::max_element(this->request_list_state->requests, {}, &avR::AvRequest::timestamp);
-            this->shared_state->display_request = latest->get();
+            // const auto &latest =
+            //     std::ranges::max_element(this->request_list_state->requests, {}, &avR::AvRequest::timestamp);
+            this->shared_state->display_request = this->request_list_state->requests.front().get();
         }
     }
 
@@ -93,6 +117,7 @@ namespace avUi
                 .timestamp = this->root.get_timestamp(),
             });
             this->request_list_state->requests.push_back(std::move(req));
+            apply_reordering(this->request_list_state->requests);
             this->request_storage->upsert(this->request_list_state->requests);
             this->shared_state->display_request = this->request_list_state->requests.back().get();
         }
@@ -236,19 +261,12 @@ namespace avUi
             if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload("REQ"))
             {
                 avR::AvRequest *dropedReq = *(avR::AvRequest **)payload->Data;
-                auto it1 =
-                    std::find_if(this->request_list_state->requests.begin(), this->request_list_state->requests.end(),
-                                 [request](const std::shared_ptr<avR::AvRequest> &p) { return p.get() == request; });
-                auto it2 = std::find_if(
-                    this->request_list_state->requests.begin(), this->request_list_state->requests.end(),
-                    [dropedReq](const std::shared_ptr<avR::AvRequest> &p) { return p.get() == dropedReq; });
-
-                if (it1 != this->request_list_state->requests.end() &&
-                    it2 != this->request_list_state->requests.end() &&
-                    (this->root.is_today(it1->get()->timestamp) && this->root.is_today(it2->get()->timestamp) ||
-                     !this->root.is_today(it1->get()->timestamp) && !this->root.is_today(it2->get()->timestamp)))
+                if (try_swap(this->request_list_state->requests, request, dropedReq))
                 {
-                    std::iter_swap(it1, it2);
+                    request->timestamp = this->root.get_timestamp();
+                    dropedReq->timestamp = this->root.get_timestamp();
+                    apply_reordering(this->request_list_state->requests);
+                    this->request_storage->upsert(this->request_list_state->requests);
                 }
             }
 
@@ -265,7 +283,7 @@ namespace avUi
                 ImGui::SetKeyboardFocusHere();
             if (!request->title.has_value())
                 request->title.emplace(request->display_name());
-            ImGui::TextDisabled(("last use: " + this->root.timestamp_to_date(request->timestamp)).c_str());
+            ImGui::TextDisabled(("last modified: " + this->root.timestamp_to_date(request->timestamp)).c_str());
             ImGui::AlignTextToFramePadding();
             ImGui::TextDisabled("title");
             ImGui::SameLine();

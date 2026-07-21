@@ -12,6 +12,7 @@ namespace avR
     {
         int64_t id = 0;
         int64_t timestamp = 0;
+        int64_t order_by = 0;
         avNet::request_method method = avNet::request_method::get;
         std::string url = "https://example.com";
         std::optional<std::string> body;

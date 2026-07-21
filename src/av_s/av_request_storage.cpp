@@ -6,6 +6,7 @@ namespace avS
     AvRequestStorage::AvRequestStorage() : AvStorage()
     {
         this->db->exec(this->create_request_table_sql);
+        this->migrate();
     }
 
     AvRequestStorage::~AvRequestStorage()
@@ -40,6 +41,7 @@ namespace avS
             q.bind(this->col_collection, request->collection.value());
         else
             q.bind(this->col_collection);
+        q.bind(this->col_order_by, request->order_by);
         q.exec();
 
         if (isInsert)
@@ -73,6 +75,7 @@ namespace avS
                 r->status_code = q.getColumn(this->col_status_code - 1).getInt();
             if (!q.getColumn(this->col_collection - 1).isNull())
                 r->collection = q.getColumn(this->col_collection - 1).getString();
+            r->order_by = q.getColumn(this->col_order_by - 1).getInt();
             requests.push_back(std::move(r));
         }
         return requests;
@@ -83,5 +86,41 @@ namespace avS
         SQLite::Statement q(*this->db.get(), this->delete_request_sql);
         q.bind(this->col_id, id);
         q.exec();
+    }
+    void AvRequestStorage::migrate() const
+    {
+        int version = this->get_schema_version();
+        SQLite::Transaction tran(*this->db.get());
+        if (version < 1)
+        {
+            this->migrate_to_v1();
+            version = 1;
+        }
+        if (version < 2)
+        {
+            this->migrate_to_v2();
+            version = 2;
+        }
+        this->set_schema_version(version);
+        tran.commit();
+    }
+    int AvRequestStorage::get_schema_version() const
+    {
+        SQLite::Statement q(*this->db.get(), "PRAGMA user_version");
+        q.executeStep();
+
+        return q.getColumn(0).getInt();
+    }
+    void AvRequestStorage::set_schema_version(int version) const
+    {
+        this->db->exec("PRAGMA user_version=" + std::to_string(version));
+    }
+    void AvRequestStorage::migrate_to_v1() const
+    {
+    }
+    void AvRequestStorage::migrate_to_v2() const
+    {
+        this->db->exec("ALTER TABLE requests "
+                       "ADD COLUMN order_by INTEGER NOT NULL DEFAULT 0;");
     }
 } // namespace avS

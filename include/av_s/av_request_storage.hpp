@@ -18,6 +18,13 @@ namespace avS
         void del(int64_t id) const;
 
     private:
+        void migrate() const;
+        int get_schema_version() const;
+        void set_schema_version(int version) const;
+
+        void migrate_to_v1() const;
+        void migrate_to_v2() const;
+
         const uint_fast8_t col_id = 1;
         const uint_fast8_t col_ts = 2;
         const uint_fast8_t col_method = 3;
@@ -26,6 +33,7 @@ namespace avS
         const uint_fast8_t col_title = 6;
         const uint_fast8_t col_status_code = 7;
         const uint_fast8_t col_collection = 8;
+        const uint_fast8_t col_order_by = 9;
 
         const char *create_request_table_sql = "CREATE TABLE IF NOT EXISTS requests("
                                                "id INTEGER PRIMARY KEY,"
@@ -39,8 +47,8 @@ namespace avS
                                                ");";
 
         const char *upsert_request_sql = "INSERT INTO requests "
-                                         "(id, ts, method, url, body, title, status_code, collection) "
-                                         "VALUES (?,?,?,?,?,?,?,?) "
+                                         "(id, ts, method, url, body, title, status_code, collection, order_by) "
+                                         "VALUES (?,?,?,?,?,?,?,?,?) "
                                          "ON CONFLICT(id) DO UPDATE SET "
                                          "ts=excluded.ts,"
                                          "method=excluded.method,"
@@ -48,9 +56,10 @@ namespace avS
                                          "body=excluded.body,"
                                          "title=excluded.title,"
                                          "status_code=excluded.status_code,"
-                                         "collection=excluded.collection;";
+                                         "collection=excluded.collection,"
+                                         "order_by=excluded.order_by;";
 
-        const char *select_all_request_sql = "SELECT*FROM requests;";
+        const char *select_all_request_sql = "SELECT*FROM requests ORDER BY order_by;";
         const char *delete_request_sql = "DELETE FROM requests WHERE id = ?;";
     };
 
