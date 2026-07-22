@@ -86,6 +86,15 @@ avNet::http_result avNet::NetworkManager::get(const char *url) const
     return fetch_core(request_method::get, url);
 }
 
+avNet::response_status avNet::NetworkManager::get(const char *url, std::string &out_body, long *out_http_code) const
+{
+    http_result result = fetch_core(request_method::get, url);
+    out_body = std::move(result.body);
+    if (out_http_code)
+        *out_http_code = result.http_code;
+    return result.status;
+}
+
 avNet::http_result avNet::NetworkManager::post(const char *url) const
 {
     return fetch_core(request_method::post, url);

@@ -1,5 +1,6 @@
 #pragma once
 #include <string_view>
+#include <future>
 #include <av_root/av_request.hpp>
 #include <av_root/ui_component.hpp>
 #include <av_root/av_inter_view_shared_state.hpp>
@@ -25,9 +26,23 @@ namespace avUi
         std::unique_ptr<avS::AvRequestStorage> request_storage;
         std::unique_ptr<avS::AvRequestParamsStorage> request_params_storage;
 
+        // networking: the request runs off the UI thread so a slow/dead endpoint never
+        // freezes the window. pending_response is declared last so it is destroyed first,
+        // joining the worker before network_manager / response_body are torn down.
+        avNet::NetworkManager network_manager;
+        std::string response_body;
+        long response_http_code;
+        avNet::response_status last_status;
+        bool has_response;
+        std::future<avNet::response_status> pending_response;
+
         void render_header(const ImGuiStyle &style);
         void render_main_content(const ImGuiStyle &style);
         void render_footer(const ImGuiStyle &style);
+
+        // fire the current request on a worker thread; poll the future each frame.
+        void send_request();
+        void poll_response();
 
         void save_state_change() const;
 

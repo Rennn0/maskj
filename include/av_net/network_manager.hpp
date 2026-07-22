@@ -94,6 +94,15 @@ namespace avNet
         /// @param url
         http_result get(const char *url) const;
 
+        /// @brief sends a get request and writes the response body into @p out_body.
+        ///        The body is still saved to the responses folder like the
+        ///        single-argument overload.
+        /// @param url target url
+        /// @param out_body buffer that receives the response body (or the error text on failure)
+        /// @param out_http_code optional out-param that receives the HTTP status code
+        /// @return status of the request
+        response_status get(const char *url, std::string &out_body, long *out_http_code = nullptr) const;
+
         /// @brief sends post request and writes response data into folder
         /// @param url
         http_result post(const char *url) const;

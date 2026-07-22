@@ -8,7 +8,8 @@ namespace avUi
     DetailedRequestViewUi::DetailedRequestViewUi(std::string id)
         : avR::UiComponent(std::move(id)), footer_height(-1.f),
           request_storage(std::make_unique<avS::AvRequestStorage>()),
-          request_params_storage(std::make_unique<avS::AvRequestParamsStorage>())
+          request_params_storage(std::make_unique<avS::AvRequestParamsStorage>()), response_http_code(0),
+          last_status(avNet::response_status::Ok), has_response(false)
     {
         this->window_flags = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize;
     }
@@ -27,6 +28,9 @@ namespace avUi
 
     DetailedRequestViewUi::~DetailedRequestViewUi()
     {
+        // never let the worker outlive this component (and its NetworkManager / response_body).
+        if (this->pending_response.valid())
+            this->pending_response.wait();
     }
 
     void DetailedRequestViewUi::render()
@@ -52,6 +56,10 @@ namespace avUi
                 ImGui::End();
                 return;
             }
+
+            // pick up a completed request once per frame so the header (button state) and
+            // footer (response) agree within the same frame.
+            this->poll_response();
 
             const ImGuiStyle &style = ImGui::GetStyle();
             const ImVec2 availRegion = ImGui::GetContentRegionAvail();
@@ -156,10 +164,13 @@ namespace avUi
         };
 
         ImGui::SameLine();
-        const char *send_label = "Send";
-        if (ImGui::Button(send_label))
+        const bool in_flight = this->pending_response.valid();
+        ImGui::BeginDisabled(in_flight);
+        if (ImGui::Button(in_flight ? "Sending..." : "Send"))
         {
+            this->send_request();
         }
+        ImGui::EndDisabled();
 
         ImGui::SameLine();
         ImGui::Spacing();
@@ -199,6 +210,79 @@ namespace avUi
     }
     void DetailedRequestViewUi::render_footer(const ImGuiStyle &style)
     {
+        if (this->pending_response.valid())
+        {
+            ImGui::TextDisabled("Sending request...");
+            return;
+        }
+
+        if (!this->has_response)
+        {
+            ImGui::TextDisabled("No response yet - press Send to run the request.");
+            return;
+        }
+
+        const bool ok = this->last_status == avNet::response_status::Ok;
+        const ImVec4 statusColor = ok ? ImVec4(0.40f, 0.80f, 0.40f, 1.f) : ImVec4(0.90f, 0.40f, 0.40f, 1.f);
+
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextColored(statusColor, "%s", avNet::NetworkManager::status_text(this->last_status));
+        ImGui::SameLine();
+        ImGui::TextDisabled("HTTP %ld", this->response_http_code);
+        ImGui::SameLine();
+        ImGui::TextDisabled("(%zu bytes)", this->response_body.size());
+        ImGui::Separator();
+
+        // read-only body view fills the remaining footer space. It wraps at the child's right
+        // edge (no horizontal scroll) and only scrolls vertically on overflow.
+        if (ImGui::BeginChild("##response_body_view", ImVec2(0, 0)))
+        {
+            ImGui::PushTextWrapPos(0.f); // 0 == wrap at the child's right edge
+            ImGui::TextUnformatted(this->response_body.data(),
+                                   this->response_body.data() + this->response_body.size());
+            ImGui::PopTextWrapPos();
+        }
+        ImGui::EndChild();
+    }
+
+    void DetailedRequestViewUi::send_request()
+    {
+        if (!this->shared_state || !this->shared_state->display_request)
+            return;
+
+        // one request at a time; ignore the button while a fetch is in flight.
+        if (this->pending_response.valid())
+            return;
+
+        avR::AvRequest *req = this->shared_state->display_request;
+
+        // params are the source of truth for the query string: assemble the final url from
+        // them, reflect it back into the editable url, and persist.
+        std::string url = build_url(req->url, req->params);
+        req->url = url;
+        this->save_state_change();
+
+        // reset the destination on the UI thread before the worker starts writing to it.
+        // std::launch::async establishes a happens-before with the worker; the UI thread only
+        // reads response_body / response_http_code again after the future is ready (poll_response).
+        this->response_body.clear();
+        this->response_http_code = 0;
+        this->has_response = false;
+
+        // run off the UI thread so a slow/dead endpoint never freezes the window.
+        this->pending_response = std::async(std::launch::async, [this, url = std::move(url)]() {
+            return this->network_manager.get(url.c_str(), this->response_body, &this->response_http_code);
+        });
+    }
+
+    void DetailedRequestViewUi::poll_response()
+    {
+        if (this->pending_response.valid() &&
+            this->pending_response.wait_for(std::chrono::seconds(0)) == std::future_status::ready)
+        {
+            this->last_status = this->pending_response.get();
+            this->has_response = true;
+        }
     }
 
     void DetailedRequestViewUi::save_state_change() const
