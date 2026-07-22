@@ -14,6 +14,7 @@ namespace avR
             std::optional<ImVec2> window_padding;
             std::optional<float> frame_rounding;
             std::optional<ImVec2> frame_padding;
+            std::optional<float> frame_border;
         };
 
     public:

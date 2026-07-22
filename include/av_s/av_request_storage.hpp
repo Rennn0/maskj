@@ -13,14 +13,12 @@ namespace avS
         ~AvRequestStorage();
 
         void upsert(avR::AvRequest *request) const;
-        void upsert(std::vector<std::shared_ptr<avR::AvRequest>> &requests) const;
+        void upsert(std::vector<std::shared_ptr<avR::AvRequest>> &requests) const;        
         std::vector<std::shared_ptr<avR::AvRequest>> select_all() const;
         void del(int64_t id) const;
 
     private:
         void migrate() const;
-        int get_schema_version() const;
-        void set_schema_version(int version) const;
 
         void migrate_to_v1() const;
         void migrate_to_v2() const;
@@ -34,6 +32,7 @@ namespace avS
         const uint_fast8_t col_status_code = 7;
         const uint_fast8_t col_collection = 8;
         const uint_fast8_t col_order_by = 9;
+
 
         const char *create_request_table_sql = "CREATE TABLE IF NOT EXISTS requests("
                                                "id INTEGER PRIMARY KEY,"

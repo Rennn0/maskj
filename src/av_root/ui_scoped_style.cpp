@@ -20,6 +20,7 @@ namespace avR
         push(ImGuiStyleVar_WindowBorderSize, style.window_border_size);
         push(ImGuiStyleVar_FrameRounding, style.frame_rounding);
         push(ImGuiStyleVar_FramePadding, style.frame_padding);
+        push(ImGuiStyleVar_FrameBorderSize, style.frame_border);
     }
 
     UiScopedStyle::~UiScopedStyle()

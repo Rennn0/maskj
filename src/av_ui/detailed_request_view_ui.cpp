@@ -2,9 +2,13 @@
 
 namespace avUi
 {
+    std::optional<int64_t> pendingParamDel;
+    std::optional<int64_t> capturedReqId;
+
     DetailedRequestViewUi::DetailedRequestViewUi(std::string id)
         : avR::UiComponent(std::move(id)), footer_height(-1.f),
-          request_storage(std::make_unique<avS::AvRequestStorage>())
+          request_storage(std::make_unique<avS::AvRequestStorage>()),
+          request_params_storage(std::make_unique<avS::AvRequestParamsStorage>())
     {
         this->window_flags = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize;
     }
@@ -12,6 +16,13 @@ namespace avUi
     DetailedRequestViewUi::DetailedRequestViewUi(std::string id, avR::AvState *sharedState) : DetailedRequestViewUi(id)
     {
         this->shared_state = static_cast<avR::AvInterViewSharedState *>(sharedState);
+
+        if (this->shared_state->display_request)
+        {
+            capturedReqId = this->shared_state->display_request->id;
+            this->shared_state->display_request->params =
+                this->request_params_storage->select_by_req_id(capturedReqId.value());
+        }
     }
 
     DetailedRequestViewUi::~DetailedRequestViewUi()
@@ -157,6 +168,34 @@ namespace avUi
     }
     void DetailedRequestViewUi::render_main_content(const ImGuiStyle &style)
     {
+        if (ImGui::BeginTabBar("req_tabs"))
+        {
+            if (ImGui::BeginTabItem("params"))
+            {
+                this->render_tab_params();
+                ImGui::EndTabItem();
+            }
+
+            if (ImGui::BeginTabItem("headers"))
+            {
+                this->render_tab_headers();
+                ImGui::EndTabItem();
+            }
+
+            if (ImGui::BeginTabItem("body"))
+            {
+                this->render_tab_body();
+                ImGui::EndTabItem();
+            }
+
+            if (ImGui::BeginTabItem("auth"))
+            {
+                this->render_tab_auth();
+                ImGui::EndTabItem();
+            }
+
+            ImGui::EndTabBar();
+        }
     }
     void DetailedRequestViewUi::render_footer(const ImGuiStyle &style)
     {
@@ -165,5 +204,199 @@ namespace avUi
     void DetailedRequestViewUi::save_state_change() const
     {
         this->request_storage->upsert(this->shared_state->display_request);
+    }
+
+    // percent-encode per RFC 3986: unreserved chars pass through, everything else -> %XX
+    static std::string url_encode(std::string_view s)
+    {
+        static constexpr char hex[] = "0123456789ABCDEF";
+        std::string out;
+        out.reserve(s.size());
+        for (unsigned char c : s)
+        {
+            if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-' ||
+                c == '_' || c == '.' || c == '~')
+            {
+                out.push_back(static_cast<char>(c));
+            }
+            else
+            {
+                out.push_back('%');
+                out.push_back(hex[c >> 4]);
+                out.push_back(hex[c & 0x0F]);
+            }
+        }
+        return out;
+    }
+
+    // The params table is the source of truth for the query string: any existing "?..." on
+    // base_url is dropped and rebuilt from the included params; a trailing "#fragment" is kept.
+    std::string DetailedRequestViewUi::build_url(std::string_view base_url,
+                                                 const std::vector<avR::AvRequestParams> &params)
+    {
+        std::string_view fragment;
+        if (const size_t hash = base_url.find('#'); hash != std::string_view::npos)
+        {
+            fragment = base_url.substr(hash); // includes the '#'
+            base_url = base_url.substr(0, hash);
+        }
+
+        if (const size_t query = base_url.find('?'); query != std::string_view::npos)
+            base_url = base_url.substr(0, query);
+
+        std::string url(base_url);
+
+        bool first = true;
+        for (const avR::AvRequestParams &p : params)
+        {
+            if (!p.included || p.key.empty())
+                continue;
+
+            url.push_back(first ? '?' : '&');
+            first = false;
+
+            url += url_encode(p.key);
+            url.push_back('=');
+            url += url_encode(p.value);
+        }
+
+        url.append(fragment);
+        return url;
+    }
+    void DetailedRequestViewUi::render_tab_params() const
+    {
+        if (capturedReqId.has_value() && capturedReqId != this->shared_state->display_request->id)
+        {
+            capturedReqId = this->shared_state->display_request->id;
+            this->shared_state->display_request->params =
+                this->request_params_storage->select_by_req_id(capturedReqId.value());
+        }
+
+        avR::UiScopedStyle style(avR::UiScopedStyle::Style{.frame_rounding = 0, .frame_border = 0});
+
+        ImGuiTableFlags flags = ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_Resizable |
+                                ImGuiTableFlags_SizingStretchSame;
+        bool isModified = false;
+
+        if (ImGui::BeginTable("params_table", 5, flags, ImVec2(0, 0), 0.f))
+        {
+            ImGui::TableSetupColumn("key", ImGuiTableColumnFlags_DefaultSort | ImGuiTableColumnFlags_WidthStretch);
+            ImGui::TableSetupColumn("value", ImGuiTableColumnFlags_WidthStretch);
+            ImGui::TableSetupColumn("description", ImGuiTableColumnFlags_NoSort | ImGuiTableColumnFlags_WidthStretch);
+            ImGui::TableSetupColumn("included");
+            ImGui::TableHeadersRow();
+
+            ImGuiListClipper clipper;
+            const size_t count = this->shared_state->display_request->params.size();
+            clipper.Begin(count);
+            while (clipper.Step())
+                for (int row_n = clipper.DisplayStart; row_n < clipper.DisplayEnd; row_n++)
+                {
+                    avR::AvRequestParams *item = &this->shared_state->display_request->params[row_n];
+                    ImGui::PushID(item);
+                    ImGui::TableNextRow();
+                    ImGui::TableNextColumn();
+                    ImGui::SetNextItemWidth(-FLT_MIN);
+                    if (ImGui::InputText("##key", &item->key,
+                                         ImGuiInputTextFlags_EnterReturnsTrue |
+                                             ImGuiInputTextFlags_CtrlEnterForNewLine))
+                    {
+                        isModified = true;
+                    }
+                    ImGui::TableNextColumn();
+                    ImGui::SetNextItemWidth(-FLT_MIN);
+                    if (ImGui::InputText("##val", &item->value,
+                                         ImGuiInputTextFlags_EnterReturnsTrue |
+                                             ImGuiInputTextFlags_CtrlEnterForNewLine))
+                    {
+                        isModified = true;
+                    }
+
+                    ImGui::TableNextColumn();
+                    if (item->editing)
+                    {
+                        ImGui::SetNextItemWidth(-FLT_MIN);
+                        if (item->set_focus)
+                        {
+                            ImGui::SetKeyboardFocusHere();
+                            item->set_focus = false;
+                        }
+                        ImGui::InputText("##desc", &item->description);
+                        if (ImGui::IsItemDeactivated())
+                        {
+                            item->editing = false;
+                            isModified = true;
+                        }
+                    }
+                    else
+                    {
+                        ImVec2 start = ImGui::GetCursorPos();
+                        float wrap = ImGui::GetContentRegionAvail().x;
+
+                        ImGui::PushTextWrapPos(start.x + wrap);
+                        ImGui::TextUnformatted(item->description.empty() ? " " : item->description.c_str());
+                        ImGui::PopTextWrapPos();
+
+                        float h = ImGui::GetItemRectSize().y;
+
+                        ImGui::SetCursorPos(start);
+                        if (ImGui::InvisibleButton("##desc_click", ImVec2(wrap, h)))
+                        {
+                            item->editing = true;
+                            item->set_focus = true;
+                        }
+                    }
+                    ImGui::TableNextColumn();
+                    if (ImGui::Checkbox("##included", &item->included))
+                        isModified = true;
+                    ImGui::TableNextColumn();
+                    if (ImGui::Button("delete"))
+                    {
+                        pendingParamDel = item->id;
+                    }
+                    ImGui::PopID();
+                }
+            ImGui::EndTable();
+        }
+
+        if (ImGui::Button("add param"))
+        {
+            this->shared_state->display_request->params.push_back(
+                avR::AvRequestParams{.request_id = this->shared_state->display_request->id});
+            isModified = true;
+        }
+
+        bool paramsChanged = isModified;
+
+        if (isModified)
+            this->request_params_storage->upsert(this->shared_state->display_request->params);
+
+        if (pendingParamDel.has_value())
+        {
+            const int64_t id = pendingParamDel.value();
+            this->request_params_storage->del(id);
+            std::erase_if(this->shared_state->display_request->params,
+                          [id](avR::AvRequestParams &p) { return p.id == id; });
+            pendingParamDel.reset();
+            paramsChanged = true;
+        }
+
+        // params are the source of truth for the query string: reflect any change back into the
+        // url shown/edited in the header, and persist it.
+        if (paramsChanged)
+        {
+            avR::AvRequest *req = this->shared_state->display_request;
+            req->url = build_url(req->url, req->params);
+            this->save_state_change();
+        }
+    }
+    void DetailedRequestViewUi::render_tab_headers() const
+    {
+    }
+    void DetailedRequestViewUi::render_tab_body() const
+    {
+    }
+    void DetailedRequestViewUi::render_tab_auth() const
+    {
     }
 } // namespace avUi
