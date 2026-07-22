@@ -45,7 +45,12 @@ namespace avR
         using namespace std::chrono;
         sys_time<milliseconds> tp{milliseconds{ts}};
         std::time_t tt = system_clock::to_time_t(tp);
-        std::tm tm = *std::localtime(&tt);
+        std::tm tm{};
+#if defined(_WIN32)
+        localtime_s(&tm, &tt);
+#else
+        localtime_r(&tt, &tm);
+#endif
         char buf[40];
         std::strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", &tm);
         return buf;

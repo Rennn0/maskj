@@ -63,6 +63,15 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(imgui)
 
 # --- Sqlite --------------------------------------------------------------
+# SQLiteCpp turns on a cpplint/cppcheck pass over its OWN sources by default.
+# On a Windows checkout those sources have CRLF line endings, which cpplint
+# rejects ("Windows endline found"), breaking our build for reasons that have
+# nothing to do with our code. Disable the linters (and the examples/tests we
+# don't need) before making the dependency available — same pattern as GLFW.
+set(SQLITECPP_RUN_CPPLINT   OFF CACHE BOOL "" FORCE)
+set(SQLITECPP_RUN_CPPCHECK  OFF CACHE BOOL "" FORCE)
+set(SQLITECPP_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(SQLITECPP_BUILD_TESTS   OFF CACHE BOOL "" FORCE)
 FetchContent_Declare(
     SQLiteCpp
     GIT_REPOSITORY https://github.com/SRombauts/SQLiteCpp.git
@@ -116,6 +125,12 @@ source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES ${arvis_all_sources})
 set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT arvis)
 
 if(MSVC)
+    # curl/curl.h pulls in <windows.h> on Windows, whose min/max macros clobber
+    # std::min / std::max at every call site (std::max(a,b) -> std::(a,b)).
+    # NOMINMAX suppresses them project-wide; WIN32_LEAN_AND_MEAN trims the heavy
+    # winsock/GDI includes we don't use. Applies to every arvis TU so individual
+    # files no longer need their own #define NOMINMAX guard.
+    target_compile_definitions(arvis PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
     target_compile_options(arvis PRIVATE /W4)
     target_compile_options(imgui PRIVATE /W1)
 else()

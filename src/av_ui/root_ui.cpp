@@ -27,7 +27,6 @@ namespace avUi
         colors[ImGuiCol_TabSelected] = ImVec4(0.26f, 0.59f, 0.98f, 0.40f);
         colors[ImGuiCol_Header] = ImVec4(0.42f, 0.51f, 0.62f, 0.31f);
         colors[ImGuiCol_HeaderHovered] = ImVec4(0.17f, 0.19f, 0.20f, 0.80f);
-
         ImGuiIO &io = ImGui::GetIO();
         ImFontConfig cfg;
         snprintf(cfg.Name, IM_ARRAYSIZE(cfg.Name), "Cousine 14");
