@@ -63,6 +63,15 @@ jobs:
     # binary runnable on older distros too (a binary built on newer glibc will
     # not run on machines that ship an older one).
     runs-on: ubuntu-22.04
+    env:
+      # Without this, vcpkg downloads its own pinned CMake/Ninja to build ports
+      # (curl); that download hit "curl error 35 (SSL connect error)" on the
+      # runner and vcpkg treats it as non-transient, failing the whole configure.
+      # The runner already ships a suitable CMake (3.31), and we install Ninja +
+      # curl below, so force vcpkg to use those system binaries instead of
+      # fetching its own. (vcpkg's toolchain minimum is CMake 3.7.2, so 3.31 is
+      # fine; the "required v4.3.3" in the log is just vcpkg's bundled version.)
+      VCPKG_FORCE_SYSTEM_BINARIES: 1
     steps:
       - uses: actions/checkout@v4
         with:
