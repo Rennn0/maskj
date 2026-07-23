@@ -21,6 +21,8 @@ namespace avUi
         style.SeparatorTextAlign = ImVec2(.5f, .5f);
         style.SeparatorTextBorderSize = 0;
         style.ScrollbarSize = 1.f;
+        style.TabRounding = 0.f;
+        style.TabBorderSize = 1.f;
         ImVec4 *colors = style.Colors;
         colors[ImGuiCol_FrameBg] = ImVec4(0.20f, 0.20f, 0.21f, 0.54f);
         colors[ImGuiCol_Tab] = ImVec4(0.17f, 0.18f, 0.20f, 0.86f);

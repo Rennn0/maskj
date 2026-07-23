@@ -18,7 +18,7 @@ namespace avS
         q.bind(this->pcol_id, id);
         q.exec();
     }
-    void AvRequestParamsStorage::upsert(avR::AvRequestParams &requestParam) const
+    void AvRequestParamsStorage::upsert(avR::AvRequestParam &requestParam) const
     {
         SQLite::Statement q(*this->db, this->upsert_request_param_sql);
         bool isInsert = requestParam.id == 0;
@@ -37,22 +37,22 @@ namespace avS
         if (isInsert)
             requestParam.id = this->db->getLastInsertRowid();
     }
-    void AvRequestParamsStorage::upsert(std::vector<avR::AvRequestParams> &requestParams) const
+    void AvRequestParamsStorage::upsert(std::vector<avR::AvRequestParam> &requestParams) const
     {
         SQLite::Transaction tran(*this->db.get());
-        for (avR::AvRequestParams &req : requestParams)
+        for (avR::AvRequestParam &req : requestParams)
             this->upsert(req);
         tran.commit();
     }
 
-    std::vector<avR::AvRequestParams> AvRequestParamsStorage::select_by_req_id(int64_t requestId) const
+    std::vector<avR::AvRequestParam> AvRequestParamsStorage::select_by_req_id(int64_t requestId) const
     {
-        std::vector<avR::AvRequestParams> res;
+        std::vector<avR::AvRequestParam> res;
         SQLite::Statement q(*this->db, this->select_all_request_param_sql);
         q.bind(1, requestId);
         while (q.executeStep())
         {
-            avR::AvRequestParams p;
+            avR::AvRequestParam p;
             p.id = q.getColumn(this->pcol_id - 1).getInt64();
             p.request_id = q.getColumn(this->pcol_request_id - 1).getInt64();
             p.included = q.getColumn(this->pcol_included - 1).getInt() == 1;

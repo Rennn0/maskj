@@ -7,7 +7,7 @@
 
 namespace avR
 {
-    struct AvRequestParams
+    struct AvRequestParam
     {
         bool included = true;
         bool editing = false;
@@ -20,6 +20,10 @@ namespace avR
         std::string description;
     };
 
+    struct AvRequestHeader : public AvRequestParam
+    {
+    };
+
     /// @brief One user-created request entry (the app-side model the UI lists,
     ///        selects and displays; sending it is wired up later).
     struct AvRequest
@@ -29,7 +33,8 @@ namespace avR
         int64_t order_by = 0;
         avNet::request_method method = avNet::request_method::get;
         std::string url = "https://example.com";
-        std::vector<AvRequestParams> params;
+        std::vector<AvRequestParam> params;
+        std::vector<AvRequestHeader> headers;
         std::optional<std::string> body;
         std::optional<std::string> title;
         std::optional<int> status_code;

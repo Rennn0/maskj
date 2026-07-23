@@ -28,6 +28,7 @@ namespace avS
     AvStorage::AvStorage()
         : db(std::make_unique<SQLite::Database>(get_path().string(), SQLite::OPEN_READWRITE | SQLite::OPEN_CREATE))
     {
+        this->db->exec("PRAGMA foreign_keys=ON;");
         this->db->exec("PRAGMA journal_mode=WAL;");
         this->db->exec("PRAGMA busy_timeout=3000;");
     }

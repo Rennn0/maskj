@@ -112,6 +112,7 @@ add_executable(arvis
     src/av_s/av_storage.cpp
     src/av_s/av_request_storage.cpp
     src/av_s/av_request_params_storage.cpp
+    src/av_s/av_request_headers_storage.cpp
 )
 
 target_include_directories(arvis PRIVATE

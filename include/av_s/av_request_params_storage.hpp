@@ -12,9 +12,9 @@ namespace avS
         ~AvRequestParamsStorage();
 
         void del(int64_t id) const;
-        void upsert(avR::AvRequestParams &requestParam) const;
-        void upsert(std::vector<avR::AvRequestParams> &requestParams) const;
-        std::vector<avR::AvRequestParams> select_by_req_id(int64_t requestId) const;
+        void upsert(avR::AvRequestParam &requestParam) const;
+        void upsert(std::vector<avR::AvRequestParam> &requestParams) const;
+        std::vector<avR::AvRequestParam> select_by_req_id(int64_t requestId) const;
 
     private:
         const uint_fast8_t pcol_id = 1;

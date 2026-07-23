@@ -3,12 +3,14 @@
 namespace avUi
 {
     std::optional<int64_t> pendingParamDel;
+    std::optional<int64_t> pendingHeaderDel;
     std::optional<int64_t> capturedReqId;
 
     DetailedRequestViewUi::DetailedRequestViewUi(std::string id)
         : avR::UiComponent(std::move(id)), footer_height(-1.f),
           request_storage(std::make_unique<avS::AvRequestStorage>()),
-          request_params_storage(std::make_unique<avS::AvRequestParamsStorage>()), response_http_code(0),
+          request_params_storage(std::make_unique<avS::AvRequestParamsStorage>()),
+          request_headers_storage(std::make_unique<avS::AvRequestHeadersStorage>()), response_http_code(0),
           last_status(avNet::response_status::Ok), has_response(false)
     {
         this->window_flags = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize;
@@ -181,6 +183,16 @@ namespace avUi
     {
         if (ImGui::BeginTabBar("req_tabs"))
         {
+            if (capturedReqId.has_value() && capturedReqId != this->shared_state->display_request->id)
+            {
+                capturedReqId = this->shared_state->display_request->id;
+                this->shared_state->display_request->params =
+                    this->request_params_storage->select_by_req_id(capturedReqId.value());
+
+                this->shared_state->display_request->headers =
+                    this->request_headers_storage->select_by_req_id(capturedReqId.value());
+            }
+
             if (ImGui::BeginTabItem("params"))
             {
                 this->render_tab_params();
@@ -208,6 +220,51 @@ namespace avUi
             ImGui::EndTabBar();
         }
     }
+    // wrap a value in shell single quotes, escaping any embedded single quote as '\'' so the
+    // result is safe to paste into a POSIX shell.
+    static std::string shell_single_quote(std::string_view s)
+    {
+        std::string out;
+        out.reserve(s.size() + 2);
+        out.push_back('\'');
+        for (char c : s)
+        {
+            if (c == '\'')
+                out += "'\\''";
+            else
+                out.push_back(c);
+        }
+        out.push_back('\'');
+        return out;
+    }
+
+    // render the exact request we sent as a copy-pasteable `curl` command line.
+    static std::string format_as_curl(const avNet::http_request &req)
+    {
+        std::string method = avNet::NetworkManager::method_text(req.method);
+        for (char &c : method)
+            c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+
+        std::string out = "curl -X ";
+        out += method;
+        out += ' ';
+        out += shell_single_quote(req.url);
+
+        for (const auto &[key, value] : req.headers)
+        {
+            out += " -H ";
+            out += shell_single_quote(key + ": " + value);
+        }
+
+        if (req.body && !req.body->empty())
+        {
+            out += " --data ";
+            out += shell_single_quote(*req.body);
+        }
+
+        return out;
+    }
+
     void DetailedRequestViewUi::render_footer(const ImGuiStyle &style)
     {
         if (this->pending_response.valid())
@@ -225,12 +282,33 @@ namespace avUi
         const bool ok = this->last_status == avNet::response_status::Ok;
         const ImVec4 statusColor = ok ? ImVec4(0.40f, 0.80f, 0.40f, 1.f) : ImVec4(0.90f, 0.40f, 0.40f, 1.f);
 
+        this->shared_state->display_request->status_code = this->response_http_code;
+
         ImGui::AlignTextToFramePadding();
         ImGui::TextColored(statusColor, "%s", avNet::NetworkManager::status_text(this->last_status));
         ImGui::SameLine();
         ImGui::TextDisabled("HTTP %ld", this->response_http_code);
         ImGui::SameLine();
         ImGui::TextDisabled("(%zu bytes)", this->response_body.size());
+
+        // copy options sit next to the status line and act on the request we actually sent
+        // (last_request) and the response we got back (response_body).
+        ImGui::SameLine();
+        ImGui::Spacing();
+        ImGui::SameLine();
+        if (ImGui::SmallButton("copy"))
+            ImGui::OpenPopup("##copy_options");
+        if (ImGui::BeginPopup("##copy_options"))
+        {
+            if (ImGui::Selectable("copy req as curl"))
+                ImGui::SetClipboardText(format_as_curl(this->last_request).c_str());
+            if (ImGui::Selectable("copy raw response"))
+                ImGui::SetClipboardText(this->response_body.c_str());
+            if (ImGui::Selectable("copy request url"))
+                ImGui::SetClipboardText(this->last_request.url.c_str());
+            ImGui::EndPopup();
+        }
+
         ImGui::Separator();
 
         // read-only body view fills the remaining footer space. It wraps at the child's right
@@ -238,8 +316,7 @@ namespace avUi
         if (ImGui::BeginChild("##response_body_view", ImVec2(0, 0)))
         {
             ImGui::PushTextWrapPos(0.f); // 0 == wrap at the child's right edge
-            ImGui::TextUnformatted(this->response_body.data(),
-                                   this->response_body.data() + this->response_body.size());
+            ImGui::TextUnformatted(this->response_body.data(), this->response_body.data() + this->response_body.size());
             ImGui::PopTextWrapPos();
         }
         ImGui::EndChild();
@@ -262,6 +339,24 @@ namespace avUi
         req->url = url;
         this->save_state_change();
 
+        // snapshot the request (method + url + included headers + body) into a self-contained
+        // descriptor the worker owns. It copies the header strings, so the worker never races
+        // against edits to display_request on the UI thread while the fetch is in flight.
+        avNet::http_request request;
+        request.method = req->method;
+        request.url = std::move(url);
+        request.body = req->body;
+        for (const avR::AvRequestHeader &header : req->headers)
+        {
+            if (!header.included || header.key.empty())
+                continue;
+            request.headers.emplace_back(header.key, header.value);
+        }
+
+        // keep an independent copy of exactly what we send so the footer can reproduce it
+        // (copy as cURL, etc.) without touching the worker's moved-in copy.
+        this->last_request = request;
+
         // reset the destination on the UI thread before the worker starts writing to it.
         // std::launch::async establishes a happens-before with the worker; the UI thread only
         // reads response_body / response_http_code again after the future is ready (poll_response).
@@ -270,9 +365,9 @@ namespace avUi
         this->has_response = false;
 
         // run off the UI thread so a slow/dead endpoint never freezes the window.
-        this->pending_response = std::async(std::launch::async, [this, url = std::move(url)]() {
-            return this->network_manager.get(url.c_str(), this->response_body, &this->response_http_code);
-        });
+        this->pending_response =
+            std::async(std::launch::async, [this, request = std::move(request)]()
+                       { return this->network_manager.send(request, this->response_body, &this->response_http_code); });
     }
 
     void DetailedRequestViewUi::poll_response()
@@ -298,8 +393,8 @@ namespace avUi
         out.reserve(s.size());
         for (unsigned char c : s)
         {
-            if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-' ||
-                c == '_' || c == '.' || c == '~')
+            if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-' || c == '_' ||
+                c == '.' || c == '~')
             {
                 out.push_back(static_cast<char>(c));
             }
@@ -316,7 +411,7 @@ namespace avUi
     // The params table is the source of truth for the query string: any existing "?..." on
     // base_url is dropped and rebuilt from the included params; a trailing "#fragment" is kept.
     std::string DetailedRequestViewUi::build_url(std::string_view base_url,
-                                                 const std::vector<avR::AvRequestParams> &params)
+                                                 const std::vector<avR::AvRequestParam> &params)
     {
         std::string_view fragment;
         if (const size_t hash = base_url.find('#'); hash != std::string_view::npos)
@@ -331,7 +426,7 @@ namespace avUi
         std::string url(base_url);
 
         bool first = true;
-        for (const avR::AvRequestParams &p : params)
+        for (const avR::AvRequestParam &p : params)
         {
             if (!p.included || p.key.empty())
                 continue;
@@ -349,13 +444,6 @@ namespace avUi
     }
     void DetailedRequestViewUi::render_tab_params() const
     {
-        if (capturedReqId.has_value() && capturedReqId != this->shared_state->display_request->id)
-        {
-            capturedReqId = this->shared_state->display_request->id;
-            this->shared_state->display_request->params =
-                this->request_params_storage->select_by_req_id(capturedReqId.value());
-        }
-
         avR::UiScopedStyle style(avR::UiScopedStyle::Style{.frame_rounding = 0, .frame_border = 0});
 
         ImGuiTableFlags flags = ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_Resizable |
@@ -376,7 +464,7 @@ namespace avUi
             while (clipper.Step())
                 for (int row_n = clipper.DisplayStart; row_n < clipper.DisplayEnd; row_n++)
                 {
-                    avR::AvRequestParams *item = &this->shared_state->display_request->params[row_n];
+                    avR::AvRequestParam *item = &this->shared_state->display_request->params[row_n];
                     ImGui::PushID(item);
                     ImGui::TableNextRow();
                     ImGui::TableNextColumn();
@@ -446,24 +534,24 @@ namespace avUi
         if (ImGui::Button("add param"))
         {
             this->shared_state->display_request->params.push_back(
-                avR::AvRequestParams{.request_id = this->shared_state->display_request->id});
+                avR::AvRequestParam{.request_id = this->shared_state->display_request->id});
             isModified = true;
         }
 
         bool paramsChanged = isModified;
-
-        if (isModified)
-            this->request_params_storage->upsert(this->shared_state->display_request->params);
 
         if (pendingParamDel.has_value())
         {
             const int64_t id = pendingParamDel.value();
             this->request_params_storage->del(id);
             std::erase_if(this->shared_state->display_request->params,
-                          [id](avR::AvRequestParams &p) { return p.id == id; });
+                          [id](avR::AvRequestParam &p) { return p.id == id; });
             pendingParamDel.reset();
             paramsChanged = true;
         }
+
+        if (isModified)
+            this->request_params_storage->upsert(this->shared_state->display_request->params);
 
         // params are the source of truth for the query string: reflect any change back into the
         // url shown/edited in the header, and persist it.
@@ -476,6 +564,70 @@ namespace avUi
     }
     void DetailedRequestViewUi::render_tab_headers() const
     {
+        avR::UiScopedStyle style(avR::UiScopedStyle::Style{.frame_rounding = 0, .frame_border = 0});
+
+        ImGuiTableFlags flags = ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_Resizable |
+                                ImGuiTableFlags_SizingStretchSame;
+        bool isModified = false;
+
+        if (ImGui::BeginTable("tab_headers", 4, flags, ImVec2(0, 0), 0.f))
+        {
+            ImGui::TableSetupColumn("key", ImGuiTableColumnFlags_WidthStretch);
+            ImGui::TableSetupColumn("value", ImGuiTableColumnFlags_WidthStretch);
+            ImGui::TableSetupColumn("included", ImGuiTableColumnFlags_WidthStretch);
+            ImGui::TableSetupColumn("delete", ImGuiTableColumnFlags_WidthStretch);
+            ImGui::TableHeadersRow();
+
+            ImGuiListClipper clipper;
+            const size_t count = this->shared_state->display_request->headers.size();
+            clipper.Begin(count);
+            while (clipper.Step())
+            {
+                for (int row_n = clipper.DisplayStart; row_n < clipper.DisplayEnd; row_n++)
+                {
+                    avR::AvRequestHeader *header = &this->shared_state->display_request->headers[row_n];
+                    ImGui::PushID(header);
+                    ImGui::TableNextRow();
+                    ImGui::TableNextColumn();
+                    ImGui::SetNextItemWidth(-FLT_MIN);
+                    if (ImGui::InputText("##k", &header->key, ImGuiInputTextFlags_EnterReturnsTrue))
+                    {
+                        isModified = true;
+                    }
+                    ImGui::TableNextColumn();
+                    ImGui::SetNextItemWidth(-FLT_MIN);
+                    if (ImGui::InputText("##v", &header->value, ImGuiInputTextFlags_EnterReturnsTrue))
+                    {
+                        isModified = true;
+                    }
+                    ImGui::TableNextColumn();
+                    if (ImGui::Checkbox("##inc", &header->included))
+                    {
+                        isModified = true;
+                    }
+                    ImGui::TableNextColumn();
+                    if (ImGui::Button("delete"))
+                    {
+                        pendingHeaderDel = header->id;
+                    }
+                    ImGui::PopID();
+                }
+            }
+
+            ImGui::EndTable();
+        }
+
+        if (ImGui::Button("add header"))
+        {
+            this->shared_state->display_request->headers.push_back(
+                avR::AvRequestHeader{avR::AvRequestParam{.request_id = this->shared_state->display_request->id}});
+            isModified = true;
+        }
+
+        if (isModified)
+        {
+            this->request_headers_storage->upsert(this->shared_state->display_request->headers);
+        }
     }
     void DetailedRequestViewUi::render_tab_body() const
     {
