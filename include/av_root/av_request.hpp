@@ -40,6 +40,11 @@ namespace avR
         std::optional<int> status_code;
         std::optional<std::string> collection;
         const std::string display_name() const { return title.value_or("request#" + std::to_string(id)); }
+
+        avNet::http_request last_request;
+        avNet::response_status last_status;
+        std::string last_response_body;
+        long last_response_http_code = 0;
     };
 
 } // namespace avR

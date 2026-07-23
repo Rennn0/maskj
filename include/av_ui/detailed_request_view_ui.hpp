@@ -34,13 +34,14 @@ namespace avUi
         // freezes the window. pending_response is declared last so it is destroyed first,
         // joining the worker before network_manager / response_body are torn down.
         avNet::NetworkManager network_manager;
-        std::string response_body;
-        long response_http_code;
-        avNet::response_status last_status;
-        bool has_response;
+
+        // std::string response_body;
+        // long response_http_code;
+        // avNet::response_status last_status;
+        // bool has_response;
+
         // snapshot of the request that produced the current response, kept so the footer can
         // reproduce it (e.g. "copy as cURL"). It is an independent copy of what the worker got.
-        avNet::http_request last_request;
 
         // how the response body is presented in the footer. Defaults to the JSON tree when the
         // body parses as JSON (chosen in poll_response), otherwise raw text.

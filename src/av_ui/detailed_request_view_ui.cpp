@@ -11,8 +11,7 @@ namespace avUi
         : avR::UiComponent(std::move(id)), footer_height(-1.f),
           request_storage(std::make_unique<avS::AvRequestStorage>()),
           request_params_storage(std::make_unique<avS::AvRequestParamsStorage>()),
-          request_headers_storage(std::make_unique<avS::AvRequestHeadersStorage>()), response_http_code(0),
-          last_status(avNet::response_status::Ok), has_response(false),
+          request_headers_storage(std::make_unique<avS::AvRequestHeadersStorage>()),
           json_view(std::make_unique<JsonTreeView>())
     {
         this->window_flags = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize;
@@ -275,23 +274,25 @@ namespace avUi
             return;
         }
 
-        if (!this->has_response)
+        if (this->shared_state->display_request->last_response_body.empty() &&
+            this->shared_state->display_request->last_response_http_code == 0)
         {
             ImGui::TextDisabled("No response yet - press Send to run the request.");
             return;
         }
 
-        const bool ok = this->last_status == avNet::response_status::Ok;
+        const bool ok = this->shared_state->display_request->last_status == avNet::response_status::Ok;
         const ImVec4 statusColor = ok ? ImVec4(0.40f, 0.80f, 0.40f, 1.f) : ImVec4(0.90f, 0.40f, 0.40f, 1.f);
 
-        this->shared_state->display_request->status_code = this->response_http_code;
+        this->shared_state->display_request->status_code = this->shared_state->display_request->last_response_http_code;
 
         ImGui::AlignTextToFramePadding();
-        ImGui::TextColored(statusColor, "%s", avNet::NetworkManager::status_text(this->last_status));
+        ImGui::TextColored(statusColor, "%s",
+                           avNet::NetworkManager::status_text(this->shared_state->display_request->last_status));
         ImGui::SameLine();
-        ImGui::TextDisabled("HTTP %ld", this->response_http_code);
+        ImGui::TextDisabled("HTTP %ld", this->shared_state->display_request->last_response_http_code);
         ImGui::SameLine();
-        ImGui::TextDisabled("(%zu bytes)", this->response_body.size());
+        ImGui::TextDisabled("(%zu bytes)", this->shared_state->display_request->last_response_body.size());
 
         // copy options sit next to the status line and act on the request we actually sent
         // (last_request) and the response we got back (response_body).
@@ -303,11 +304,11 @@ namespace avUi
         if (ImGui::BeginPopup("##copy_options"))
         {
             if (ImGui::Selectable("copy req as curl"))
-                ImGui::SetClipboardText(format_as_curl(this->last_request).c_str());
+                ImGui::SetClipboardText(format_as_curl(this->shared_state->display_request->last_request).c_str());
             if (ImGui::Selectable("copy raw response"))
-                ImGui::SetClipboardText(this->response_body.c_str());
+                ImGui::SetClipboardText(this->shared_state->display_request->last_response_body.c_str());
             if (ImGui::Selectable("copy request url"))
-                ImGui::SetClipboardText(this->last_request.url.c_str());
+                ImGui::SetClipboardText(this->shared_state->display_request->last_request.url.c_str());
             ImGui::EndPopup();
         }
 
@@ -351,8 +352,9 @@ namespace avUi
             if (ImGui::BeginChild("##response_body_view", ImVec2(0, 0)))
             {
                 ImGui::PushTextWrapPos(0.f); // 0 == wrap at the child's right edge
-                ImGui::TextUnformatted(this->response_body.data(),
-                                       this->response_body.data() + this->response_body.size());
+                ImGui::TextUnformatted(this->shared_state->display_request->last_response_body.data(),
+                                       this->shared_state->display_request->last_response_body.data() +
+                                           this->shared_state->display_request->last_response_body.size());
                 ImGui::PopTextWrapPos();
             }
             ImGui::EndChild();
@@ -392,19 +394,22 @@ namespace avUi
 
         // keep an independent copy of exactly what we send so the footer can reproduce it
         // (copy as cURL, etc.) without touching the worker's moved-in copy.
-        this->last_request = request;
+        this->shared_state->display_request->last_request = request;
 
         // reset the destination on the UI thread before the worker starts writing to it.
         // std::launch::async establishes a happens-before with the worker; the UI thread only
         // reads response_body / response_http_code again after the future is ready (poll_response).
-        this->response_body.clear();
-        this->response_http_code = 0;
-        this->has_response = false;
+        this->shared_state->display_request->last_response_body.clear();
+        this->shared_state->display_request->last_response_http_code = 0;
 
         // run off the UI thread so a slow/dead endpoint never freezes the window.
         this->pending_response =
-            std::async(std::launch::async, [this, request = std::move(request)]()
-                       { return this->network_manager.send(request, this->response_body, &this->response_http_code); });
+            std::async(std::launch::async,
+                       [this, request = std::move(request)]()
+                       {
+                           return this->network_manager.send(request, this->shared_state->display_request->last_response_body,
+                                                             &this->shared_state->display_request->last_response_http_code);
+                       });
     }
 
     void DetailedRequestViewUi::poll_response()
@@ -412,12 +417,11 @@ namespace avUi
         if (this->pending_response.valid() &&
             this->pending_response.wait_for(std::chrono::seconds(0)) == std::future_status::ready)
         {
-            this->last_status = this->pending_response.get();
-            this->has_response = true;
+            this->shared_state->display_request->last_status = this->pending_response.get();
 
             // parse the body once, here, rather than every frame in the footer. Default to the
             // tree view when it is JSON, otherwise fall back to the raw text view.
-            this->json_view->set_source(this->response_body);
+            this->json_view->set_source(this->shared_state->display_request->last_response_body);
             this->response_view = this->json_view->is_json() ? ResponseView::tree : ResponseView::raw;
         }
     }

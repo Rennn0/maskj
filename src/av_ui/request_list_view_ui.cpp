@@ -247,6 +247,10 @@ namespace avUi
         if (ImGui::Selectable("##row", is_selected, ImGuiSelectableFlags_None, ImVec2(0.0f, row_height)))
         {
             this->shared_state->display_request = request;
+            // this->shared_state->display_request->last_request = {};
+            // this->shared_state->display_request->last_response_body.clear();
+            // this->shared_state->display_request->last_response_http_code = 0;
+            // this->shared_state->display_request->last_status = {};
         }
 
         if (ImGui::BeginDragDropSource())

@@ -2,6 +2,7 @@
 
 #include <av_root/av_state.hpp>
 #include <av_root/av_request.hpp>
+
 namespace avR
 {
     class AvInterViewSharedState : public AvState

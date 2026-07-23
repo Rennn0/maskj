@@ -213,7 +213,13 @@ namespace avUi
 
             ImGui::TableSetColumnIndex(1);
             const std::string text = scalar_display(value);
-            ImGui::TextColored(value_color(value), "%s", text.c_str());
+            // wrap long scalar values (URLs, tokens, prose) at the value cell's right edge
+            // instead of overflowing; the table row grows to fit the wrapped lines.
+            ImGui::PushStyleColor(ImGuiCol_Text, value_color(value));
+            ImGui::PushTextWrapPos(0.0f); // 0 == wrap at the current cell's right edge
+            ImGui::TextUnformatted(text.c_str(), text.c_str() + text.size());
+            ImGui::PopTextWrapPos();
+            ImGui::PopStyleColor();
         }
 
         ImGui::PopID();
